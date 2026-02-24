@@ -70,7 +70,7 @@ describe("agent image", { timeout: 300_000 }, () => {
 
     execFileSync(
       "docker",
-      ["run", "-d", "--privileged", "--platform", "linux/amd64", "-e", "OPENCLAW_GATEWAY_TOKEN=zzzbbb", "-e", "S6_VERBOSITY=2", "-e", "S6_LOGGING=0", "--name", CONTAINER, IMAGE],
+      ["run", "-d", "--privileged", "--platform", "linux/amd64", "-e", "OPENCLAW_GATEWAY_TOKEN=zzzbbb", "--name", CONTAINER, IMAGE],
       { encoding: "utf-8" },
     );
 
@@ -90,17 +90,7 @@ describe("agent image", { timeout: 300_000 }, () => {
     if (check.exitCode !== 0) {
       // Dump diagnostics before failing
       console.error("=== Container logs ===");
-      console.error(hostExec(["docker", "logs", "--tail", "200", CONTAINER]));
-      console.error("=== s6-rc compiled services ===");
-      console.error(exec(["/package/admin/s6-rc/command/s6-rc-db", "-c", "/run/s6-rc/compiled", "list", "services"]).stdout || "(none)");
-      console.error("=== s6-rc-db type user ===");
-      console.error(exec(["bash", "-c", "/package/admin/s6-rc/command/s6-rc-db -c /run/s6-rc/compiled type user 2>&1"]).stdout || "(failed)");
-      console.error("=== s6-rc-db type init-setup ===");
-      console.error(exec(["bash", "-c", "/package/admin/s6-rc/command/s6-rc-db -c /run/s6-rc/compiled type init-setup 2>&1"]).stdout || "(failed)");
-      console.error("=== try manual s6-rc change init-setup ===");
-      console.error(exec(["bash", "-c", "/package/admin/s6-rc/command/s6-rc -v2 -l /run/s6-rc change init-setup 2>&1"]).stdout || "(failed)");
-      console.error("=== s6-rc service list after manual change ===");
-      console.error(exec(["/package/admin/s6-rc/command/s6-rc", "-a", "list"]).stdout || "(none)");
+      console.error(hostExec(["docker", "logs", "--tail", "50", CONTAINER]));
       console.error("=== Process list ===");
       console.error(exec(["ps", "aux"]).stdout || "(empty)");
       throw new Error("openclaw gateway did not start within 240s");
