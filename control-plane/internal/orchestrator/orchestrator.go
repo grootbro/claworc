@@ -42,6 +42,8 @@ type CreateParams struct {
 	StorageHome     string
 	ContainerImage  string
 	VNCResolution   string
+	Timezone        string
+	UserAgent       string
 	EnvVars         map[string]string
 }
 

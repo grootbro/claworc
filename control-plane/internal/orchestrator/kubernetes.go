@@ -436,6 +436,12 @@ func buildDeployment(params CreateParams, ns string) *appsv1.Deployment {
 	if token, ok := params.EnvVars["OPENCLAW_GATEWAY_TOKEN"]; ok && token != "" {
 		envVars = append(envVars, corev1.EnvVar{Name: "OPENCLAW_GATEWAY_TOKEN", Value: token})
 	}
+	if params.Timezone != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "TZ", Value: params.Timezone})
+	}
+	if params.UserAgent != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "CHROMIUM_USER_AGENT", Value: params.UserAgent})
+	}
 
 	shmSize := resource.MustParse("2Gi")
 

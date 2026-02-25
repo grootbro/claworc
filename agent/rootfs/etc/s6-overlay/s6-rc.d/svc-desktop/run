@@ -2,6 +2,7 @@
 
 export DISPLAY=:0
 export HOME=/home/claworc
+export LANG=en_US.UTF-8
 
 # Wait for X server to be ready
 while ! xdpyinfo -display :0 >/dev/null 2>&1; do sleep 0.5; done
@@ -9,11 +10,16 @@ while ! xdpyinfo -display :0 >/dev/null 2>&1; do sleep 0.5; done
 # Start openbox window manager in background
 s6-setuidgid claworc openbox &
 
+# Build optional user-agent flag
+UA_FLAG=""
+if [ -n "$CHROMIUM_USER_AGENT" ]; then
+  UA_FLAG="--user-agent=$CHROMIUM_USER_AGENT"
+fi
+
 # Run chromium in a restart loop
 while true; do
   s6-setuidgid claworc /usr/bin/chromium \
     --no-first-run \
-    --no-sandbox \
     --password-store=basic \
     --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
     --start-maximized \
@@ -21,6 +27,10 @@ while true; do
     --remote-debugging-port=9222 \
     --remote-debugging-address=127.0.0.1 \
     --disable-default-apps \
-    --disable-features=CloseWindowWithLastTab > /dev/null 2>&1
+    --disable-features=CloseWindowWithLastTab \
+    --disable-infobars \
+    --disable-component-update \
+    --load-extension=/opt/stealth-extension \
+    $UA_FLAG > /dev/null 2>&1
   sleep 1
 done

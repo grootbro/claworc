@@ -170,6 +170,12 @@ func (d *DockerOrchestrator) CreateInstance(ctx context.Context, params CreatePa
 	if token, ok := params.EnvVars["OPENCLAW_GATEWAY_TOKEN"]; ok && token != "" {
 		env = append(env, fmt.Sprintf("OPENCLAW_GATEWAY_TOKEN=%s", token))
 	}
+	if params.Timezone != "" {
+		env = append(env, fmt.Sprintf("TZ=%s", params.Timezone))
+	}
+	if params.UserAgent != "" {
+		env = append(env, fmt.Sprintf("CHROMIUM_USER_AGENT=%s", params.UserAgent))
+	}
 
 	// Mounts
 	mounts := []mount.Mount{
