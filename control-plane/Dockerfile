@@ -1,5 +1,12 @@
 FROM node:22-alpine AS frontend
 
+ARG VITE_PRODUCT_NAME=Claworc
+ARG VITE_PRODUCT_SHORT_NAME=Claworc
+ARG VITE_PRODUCT_TAGLINE=OpenClaw Orchestrator
+ENV VITE_PRODUCT_NAME=$VITE_PRODUCT_NAME
+ENV VITE_PRODUCT_SHORT_NAME=$VITE_PRODUCT_SHORT_NAME
+ENV VITE_PRODUCT_TAGLINE=$VITE_PRODUCT_TAGLINE
+
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN npm ci

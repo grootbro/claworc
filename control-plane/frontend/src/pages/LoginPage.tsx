@@ -9,6 +9,7 @@ import {
   webAuthnLoginBegin,
   webAuthnLoginFinish,
 } from "@/api/auth";
+import { branding } from "@/branding";
 import { startAuthentication } from "@simplewebauthn/browser";
 import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
 
@@ -125,7 +126,7 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 text-center mb-6">
             {setupMode
               ? "Set up your first admin account to get started"
-              : "OpenClaw Orchestrator"}
+              : branding.productTagline}
           </p>
 
           {error && (

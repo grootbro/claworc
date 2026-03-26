@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ -f ".env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+fi
+
 # Defaults
-DASHBOARD_IMAGE="glukw/claworc"
-TAG="latest"
-CONTAINER_NAME="claworc"
+IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-glukw}"
+DASHBOARD_IMAGE="${DASHBOARD_IMAGE:-${IMAGE_NAMESPACE}/claworc}"
+DEFAULT_CONTAINER_IMAGE="${CLAWORC_DEFAULT_CONTAINER_IMAGE:-${IMAGE_NAMESPACE}/openclaw-vnc-chromium:${TAG:-latest}}"
+TAG="${TAG:-latest}"
+CONTAINER_NAME="${CONTAINER_NAME:-claworc}"
 
 # --- Helpers -----------------------------------------------------------------
 
@@ -115,6 +124,7 @@ install_docker() {
         -v /var/run/docker.sock:/var/run/docker.sock \
         -v "$DATA_DIR":"$DATA_DIR" \
         -e CLAWORC_DATA_PATH="$DATA_DIR" \
+        -e CLAWORC_DEFAULT_CONTAINER_IMAGE="$DEFAULT_CONTAINER_IMAGE" \
         --restart unless-stopped \
         "$DASHBOARD_IMAGE:$TAG" >/dev/null
 

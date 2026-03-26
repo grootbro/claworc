@@ -18,7 +18,7 @@ fi
 # Always ensure gateway settings are correct (config may exist from a persisted volume
 # but be missing required gateway fields)
 s6-setuidgid claworc openclaw config set gateway.mode local
-s6-setuidgid claworc openclaw config set gateway.bind localhost
+s6-setuidgid claworc openclaw config set gateway.bind loopback
 s6-setuidgid claworc openclaw config set gateway.controlUi.dangerouslyDisableDeviceAuth true
 
 # Set token if provided

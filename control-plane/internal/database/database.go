@@ -63,7 +63,7 @@ func seedDefaults() error {
 		"default_memory_limit":         "4Gi",
 		"default_storage_homebrew":     "10Gi",
 		"default_storage_home":         "10Gi",
-		"default_container_image":      "glukw/openclaw-vnc-chromium:latest",
+		"default_container_image":      envOrDefault("CLAWORC_DEFAULT_CONTAINER_IMAGE", "glukw/openclaw-vnc-chromium:latest"),
 		"default_vnc_resolution":       "1920x1080",
 		"orchestrator_backend":         "auto",
 		"default_models":               "[]",
@@ -84,6 +84,13 @@ func seedDefaults() error {
 	}
 
 	return nil
+}
+
+func envOrDefault(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func Close() error {

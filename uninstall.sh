@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONTAINER_NAME="claworc"
-DASHBOARD_IMAGE="glukw/claworc"
-AGENT_IMAGE="glukw/openclaw-vnc-chromium"
+if [[ -f ".env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+fi
+
+IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-glukw}"
+CONTAINER_NAME="${CONTAINER_NAME:-claworc}"
+DASHBOARD_IMAGE="${DASHBOARD_IMAGE:-${IMAGE_NAMESPACE}/claworc}"
+AGENT_IMAGE="${AGENT_IMAGE:-${IMAGE_NAMESPACE}/openclaw-vnc-chromium}"
+TAG="${TAG:-latest}"
 
 confirm() {
     printf "%s [Y/n]: " "$1"
@@ -75,8 +84,8 @@ if [[ "$FOUND_DOCKER" -eq 1 ]]; then
     # Remove images
     echo ""
     if confirm "Remove Docker images ($DASHBOARD_IMAGE, $AGENT_IMAGE)?"; then
-        docker rmi "$DASHBOARD_IMAGE:latest" 2>/dev/null || true
-        docker rmi "$AGENT_IMAGE:latest" 2>/dev/null || true
+        docker rmi "$DASHBOARD_IMAGE:$TAG" 2>/dev/null || true
+        docker rmi "$AGENT_IMAGE:$TAG" 2>/dev/null || true
         echo "  Removed images"
     fi
 fi

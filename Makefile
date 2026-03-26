@@ -3,15 +3,25 @@ include .env.development
 -include .env
 export
 
-AGENT_BASE_IMAGE := glukw/openclaw-vnc-base
+IMAGE_NAMESPACE ?= glukw
+TAG ?= latest
+CLAWORC_DEFAULT_CONTAINER_IMAGE ?= $(IMAGE_NAMESPACE)/openclaw-vnc-chromium:$(TAG)
+VITE_PRODUCT_NAME ?= Claworc
+VITE_PRODUCT_SHORT_NAME ?= $(VITE_PRODUCT_NAME)
+VITE_PRODUCT_TAGLINE ?= OpenClaw Orchestrator
+FRONTEND_BUILD_ARGS := \
+	--build-arg VITE_PRODUCT_NAME='$(VITE_PRODUCT_NAME)' \
+	--build-arg VITE_PRODUCT_SHORT_NAME='$(VITE_PRODUCT_SHORT_NAME)' \
+	--build-arg VITE_PRODUCT_TAGLINE='$(VITE_PRODUCT_TAGLINE)'
+
+AGENT_BASE_IMAGE ?= $(IMAGE_NAMESPACE)/openclaw-vnc-base
 AGENT_IMAGE_NAME := openclaw-vnc-chromium
-AGENT_IMAGE := glukw/$(AGENT_IMAGE_NAME)
+AGENT_IMAGE ?= $(IMAGE_NAMESPACE)/$(AGENT_IMAGE_NAME)
 AGENT_CHROME_IMAGE_NAME := openclaw-vnc-chrome
-AGENT_CHROME_IMAGE := glukw/$(AGENT_CHROME_IMAGE_NAME)
+AGENT_CHROME_IMAGE ?= $(IMAGE_NAMESPACE)/$(AGENT_CHROME_IMAGE_NAME)
 AGENT_BRAVE_IMAGE_NAME := openclaw-vnc-brave
-AGENT_BRAVE_IMAGE := glukw/$(AGENT_BRAVE_IMAGE_NAME)
-DASHBOARD_IMAGE := glukw/claworc
-TAG := latest
+AGENT_BRAVE_IMAGE ?= $(IMAGE_NAMESPACE)/$(AGENT_BRAVE_IMAGE_NAME)
+DASHBOARD_IMAGE ?= $(IMAGE_NAMESPACE)/claworc
 PLATFORMS := linux/amd64,linux/arm64
 NATIVE_ARCH := $(shell uname -m | sed 's/x86_64/amd64/')
 
@@ -21,9 +31,9 @@ KUBECONFIG := ../kubeconfig
 HELM_RELEASE := claworc
 HELM_NAMESPACE := claworc
 
-.PHONY: agent agent-base agent-build agent-test agent-push agent-exec dashboard docker-prune release \
+.PHONY: agent agent-base agent-base-local agent-build agent-test agent-push agent-exec dashboard docker-prune release release-local \
 	helm-install helm-upgrade helm-uninstall helm-template install-dev dev dev-docs \
-	pull-agent local-build local-up local-down local-logs local-clean control-plane \
+	pull-agent local-build local-up local-down local-logs local-clean control-plane control-plane-local \
 	ssh-integration-test ssh-file-integration-test test-integration-backend extract-models scrape-models test \
 	worker-deploy worker-test
 
@@ -32,6 +42,10 @@ agent: agent-base agent-build agent-test agent-push
 agent-base:
 	@echo "Building and pushing base image..."
 	docker buildx build --platform $(PLATFORMS) $(CACHE_ARGS) -t $(AGENT_BASE_IMAGE):$(TAG) --push agent/
+
+agent-base-local:
+	@echo "Building base image locally for $(NATIVE_ARCH)..."
+	docker buildx build --platform linux/$(NATIVE_ARCH) $(CACHE_ARGS) -t $(AGENT_BASE_IMAGE):$(TAG) --load agent/
 
 agent-build:
 	@echo "Building agent images (chromium, chrome, brave) in parallel..."
@@ -79,10 +93,16 @@ agent-exec:
 	@echo "  docker exec -it $(AGENT_CONTAINER) bash"
 
 control-plane:
-	docker buildx build --platform $(PLATFORMS) $(CACHE_ARGS) -t $(DASHBOARD_IMAGE):$(TAG) --push control-plane/
+	docker buildx build --platform $(PLATFORMS) $(CACHE_ARGS) $(FRONTEND_BUILD_ARGS) -t $(DASHBOARD_IMAGE):$(TAG) --push control-plane/
+
+control-plane-local:
+	docker buildx build --platform linux/$(NATIVE_ARCH) $(CACHE_ARGS) $(FRONTEND_BUILD_ARGS) -t $(DASHBOARD_IMAGE):$(TAG) --load control-plane/
 
 release: agent control-plane
 	@echo "Released $(AGENT_IMAGE):$(TAG) and $(DASHBOARD_IMAGE):$(TAG)"
+
+release-local: agent-base-local agent-build control-plane-local
+	@echo "Built local images $(AGENT_IMAGE):$(TAG) and $(DASHBOARD_IMAGE):$(TAG)"
 
 docker-prune:
 	docker system prune -af

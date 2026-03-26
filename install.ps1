@@ -7,8 +7,10 @@
 #>
 
 param(
-    [string]$DashboardImage = "glukw/claworc",
-    [string]$Tag = "latest",
+    [string]$ImageNamespace = $(if ($env:IMAGE_NAMESPACE) { $env:IMAGE_NAMESPACE } else { "glukw" }),
+    [string]$DashboardImage = $(if ($env:DASHBOARD_IMAGE) { $env:DASHBOARD_IMAGE } elseif ($env:IMAGE_NAMESPACE) { "$($env:IMAGE_NAMESPACE)/claworc" } else { "glukw/claworc" }),
+    [string]$DefaultContainerImage = $(if ($env:CLAWORC_DEFAULT_CONTAINER_IMAGE) { $env:CLAWORC_DEFAULT_CONTAINER_IMAGE } elseif ($env:IMAGE_NAMESPACE) { "$($env:IMAGE_NAMESPACE)/openclaw-vnc-chromium:latest" } else { "glukw/openclaw-vnc-chromium:latest" }),
+    [string]$Tag = $(if ($env:TAG) { $env:TAG } else { "latest" }),
     [string]$ContainerName = "claworc"
 )
 
@@ -176,6 +178,7 @@ function Install-Docker {
         -v /var/run/docker.sock:/var/run/docker.sock `
         -v "${dataDirUnix}:${dataDirUnix}" `
         -e "CLAWORC_DATA_PATH=${dataDirUnix}" `
+        -e "CLAWORC_DEFAULT_CONTAINER_IMAGE=${DefaultContainerImage}" `
         --restart unless-stopped `
         "${DashboardImage}:${Tag}" | Out-Null
 

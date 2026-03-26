@@ -6,6 +6,12 @@ on:
       - 'control-plane/**'
       - '.github/workflows/control-plane.yml'
 
+env:
+  IMAGE_NAMESPACE: ${{ vars.DOCKER_IMAGE_NAMESPACE != '' && vars.DOCKER_IMAGE_NAMESPACE || secrets.DOCKERHUB_USERNAME }}
+  VITE_PRODUCT_NAME: ${{ vars.VITE_PRODUCT_NAME != '' && vars.VITE_PRODUCT_NAME || 'Claworc' }}
+  VITE_PRODUCT_SHORT_NAME: ${{ vars.VITE_PRODUCT_SHORT_NAME != '' && vars.VITE_PRODUCT_SHORT_NAME || vars.VITE_PRODUCT_NAME || 'Claworc' }}
+  VITE_PRODUCT_TAGLINE: ${{ vars.VITE_PRODUCT_TAGLINE != '' && vars.VITE_PRODUCT_TAGLINE || 'OpenClaw Orchestrator' }}
+
 jobs:
   unit:
     name: Unit Tests
@@ -60,7 +66,7 @@ jobs:
           context: control-plane/
           platforms: linux/amd64
           push: true
-          tags: glukw/claworc:build-amd64
+          tags: ${{ env.IMAGE_NAMESPACE }}/claworc:build-amd64
           cache-from: type=gha,scope=control-plane-amd64
           cache-to: type=gha,mode=max,scope=control-plane-amd64
 
@@ -83,7 +89,7 @@ jobs:
           context: control-plane/
           platforms: linux/arm64
           push: true
-          tags: glukw/claworc:build-arm64
+          tags: ${{ env.IMAGE_NAMESPACE }}/claworc:build-arm64
           cache-from: type=gha,scope=control-plane-arm64
           cache-to: type=gha,mode=max,scope=control-plane-arm64
 
@@ -103,6 +109,6 @@ jobs:
       - name: Create and push multi-arch manifest
         run: |
           docker buildx imagetools create \
-            -t glukw/claworc:latest \
-            glukw/claworc:build-amd64 \
-            glukw/claworc:build-arm64
+            -t ${IMAGE_NAMESPACE}/claworc:latest \
+            ${IMAGE_NAMESPACE}/claworc:build-amd64 \
+            ${IMAGE_NAMESPACE}/claworc:build-arm64

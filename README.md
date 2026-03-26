@@ -89,6 +89,7 @@ for instance access. [Read more](docs/install.md)
 - [Getting Started](docs/getting-started.md) - First-time setup and orientation
 - [Installation](docs/install.md) - Runs on Docker or Kubernetes
 - [UI](docs/ui.md) - Frontend pages, components, and interaction patterns
+- [Custom Fork Workflow](docs/custom-fork.md) - Maintain a custom product fork while tracking upstream
 
 ## Coming Soon
 

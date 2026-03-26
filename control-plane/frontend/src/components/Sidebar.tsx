@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useHealth } from "@/hooks/useHealth";
 import { useAuth } from "@/contexts/AuthContext";
+import { branding } from "@/branding";
 
 export default function Sidebar() {
   const location = useLocation();
@@ -44,9 +45,9 @@ export default function Sidebar() {
     <nav className="group fixed left-0 top-0 h-screen w-16 hover:w-56 transition-[width] duration-200 bg-white border-r border-gray-200 z-40 flex flex-col overflow-hidden">
       {/* Logo */}
       <div className="relative flex items-center gap-2 px-2 h-16 border-b border-gray-200 shrink-0">
-        <img src="/favicon.svg" alt="Claworc" className="w-12 h-12 shrink-0" />
+        <img src="/favicon.svg" alt={branding.productName} className="w-12 h-12 shrink-0" />
         <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden flex flex-col">
-          <span className="text-sm font-semibold text-gray-900">Claworc</span>
+          <span className="text-sm font-semibold text-gray-900">{branding.productShortName}</span>
           {orchLabel && (
             <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500">
               <span
