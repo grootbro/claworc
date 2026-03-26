@@ -9,6 +9,7 @@ on:
 
 env:
   IMAGE_NAMESPACE: ${{ vars.DOCKER_IMAGE_NAMESPACE != '' && vars.DOCKER_IMAGE_NAMESPACE || secrets.DOCKERHUB_USERNAME }}
+  OPENCLAW_PACKAGE_SPEC: ${{ vars.OPENCLAW_PACKAGE_SPEC != '' && vars.OPENCLAW_PACKAGE_SPEC || 'openclaw@latest' }}
 
 jobs:
   agent:
@@ -36,3 +37,4 @@ jobs:
         run: make agent
         env:
           CACHE_ARGS: --cache-from type=gha,scope=agent --cache-to type=gha,mode=max,scope=agent
+          OPENCLAW_PACKAGE_SPEC: ${{ env.OPENCLAW_PACKAGE_SPEC }}

@@ -9,10 +9,13 @@ CLAWORC_DEFAULT_CONTAINER_IMAGE ?= $(IMAGE_NAMESPACE)/openclaw-vnc-chromium:$(TA
 VITE_PRODUCT_NAME ?= Claworc
 VITE_PRODUCT_SHORT_NAME ?= $(VITE_PRODUCT_NAME)
 VITE_PRODUCT_TAGLINE ?= OpenClaw Orchestrator
+OPENCLAW_PACKAGE_SPEC ?= openclaw@latest
 FRONTEND_BUILD_ARGS := \
 	--build-arg VITE_PRODUCT_NAME='$(VITE_PRODUCT_NAME)' \
 	--build-arg VITE_PRODUCT_SHORT_NAME='$(VITE_PRODUCT_SHORT_NAME)' \
 	--build-arg VITE_PRODUCT_TAGLINE='$(VITE_PRODUCT_TAGLINE)'
+AGENT_BUILD_ARGS := \
+	--build-arg OPENCLAW_PACKAGE_SPEC='$(OPENCLAW_PACKAGE_SPEC)'
 
 AGENT_BASE_IMAGE ?= $(IMAGE_NAMESPACE)/openclaw-vnc-base
 AGENT_IMAGE_NAME := openclaw-vnc-chromium
@@ -41,11 +44,11 @@ agent: agent-base agent-build agent-test agent-push
 
 agent-base:
 	@echo "Building and pushing base image..."
-	docker buildx build --platform $(PLATFORMS) $(CACHE_ARGS) -t $(AGENT_BASE_IMAGE):$(TAG) --push agent/
+	docker buildx build --platform $(PLATFORMS) $(CACHE_ARGS) $(AGENT_BUILD_ARGS) -t $(AGENT_BASE_IMAGE):$(TAG) --push agent/
 
 agent-base-local:
 	@echo "Building base image locally for $(NATIVE_ARCH)..."
-	docker buildx build --platform linux/$(NATIVE_ARCH) $(CACHE_ARGS) -t $(AGENT_BASE_IMAGE):$(TAG) --load agent/
+	docker buildx build --platform linux/$(NATIVE_ARCH) $(CACHE_ARGS) $(AGENT_BUILD_ARGS) -t $(AGENT_BASE_IMAGE):$(TAG) --load agent/
 
 agent-build:
 	@echo "Building agent images (chromium, chrome, brave) in parallel..."
@@ -145,12 +148,12 @@ dev:
 	CLAWORC_AUTH_DISABLED=true CLAWORC_LLM_RESPONSE_LOG=$(CURDIR)/llm-responses.log goreman -set-ports=false start
 
 ssh-integration-test:
-	docker build -t $(AGENT_BASE_IMAGE):local agent/
+	docker build $(AGENT_BUILD_ARGS) -t $(AGENT_BASE_IMAGE):local agent/
 	docker build --build-arg BASE_IMAGE=$(AGENT_BASE_IMAGE):local -f agent/Dockerfile.chromium -t claworc-agent:local agent/
 	cd control-plane && go test -tags docker_integration -v -timeout 300s ./internal/sshproxy/ -run TestIntegration
 
 ssh-file-integration-test:
-	docker build -t $(AGENT_BASE_IMAGE):local agent/
+	docker build $(AGENT_BUILD_ARGS) -t $(AGENT_BASE_IMAGE):local agent/
 	docker build --build-arg BASE_IMAGE=$(AGENT_BASE_IMAGE):local -f agent/Dockerfile.chromium -t claworc-agent:local agent/
 	cd agent/tests && npm run test:ssh -- --testPathPattern file.test
 

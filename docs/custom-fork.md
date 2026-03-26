@@ -23,6 +23,7 @@ Local-only values live in `.env` and are ignored by git.
 Current local defaults:
 
 - `IMAGE_NAMESPACE=grootbro`
+- `OPENCLAW_PACKAGE_SPEC=openclaw@latest`
 - `CLAWORC_DEFAULT_CONTAINER_IMAGE=grootbro/openclaw-vnc-chromium:latest`
 - `VITE_PRODUCT_NAME=Ravefox`
 - `VITE_PRODUCT_SHORT_NAME=Ravefox`
@@ -37,6 +38,7 @@ These values are picked up by:
 - `install.sh`
 - `uninstall.sh`
 - the seeded control-plane default container image
+- the agent image build, including the OpenClaw package source
 
 ## CI Image Publishing
 
@@ -69,6 +71,18 @@ Build local images:
 make release-local
 ```
 
+Build against your own OpenClaw fork instead of npm latest:
+
+```bash
+OPENCLAW_PACKAGE_SPEC='github:grootbro/openclaw#main' make release-local
+```
+
+For a working branch in your fork:
+
+```bash
+OPENCLAW_PACKAGE_SPEC='github:grootbro/openclaw#codex/skills-ui-onboarding' make agent-base-local
+```
+
 Push your own images:
 
 ```bash
@@ -77,7 +91,9 @@ make control-plane
 ```
 
 Because the image namespace is configurable, these builds target your own
-registry namespace instead of `glukw/*`.
+registry namespace instead of `glukw/*`. The OpenClaw package source is also
+configurable, so you can stay on official npm releases or point agent builds at
+your own fork when you need custom runtime changes.
 
 ## Runtime Fixes Already Carried In This Fork
 
