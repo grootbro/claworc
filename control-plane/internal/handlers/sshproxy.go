@@ -128,7 +128,9 @@ func proxyToLocalPort(w http.ResponseWriter, r *http.Request, port int, path str
 			return fmt.Errorf("error reading response body: %w", readErr)
 		}
 		baseTag := `<base href="` + rewriteBase[0] + `">`
-		body = bytes.Replace(body, []byte("<head>"), []byte("<head>"+baseTag), 1)
+		normalizedBase := strings.TrimRight(rewriteBase[0], "/")
+		bootstrapTag := `<script>(function(){var base=` + fmt.Sprintf("%q", normalizedBase) + `;window.__OPENCLAW_CONTROL_UI_BASE_PATH__=base;try{var proto=location.protocol==="https:"?"wss://":"ws://";var gatewayUrl=proto+location.host+base;var scopedKey="openclaw.control.settings.v1:"+gatewayUrl;var candidates=[scopedKey,"openclaw.control.settings.v1:default","openclaw.control.settings.v1"];var parsed={};for(var i=0;i<candidates.length;i++){var raw=localStorage.getItem(candidates[i]);if(!raw){continue}try{parsed=JSON.parse(raw)||{};break}catch(_ignored){}}if(!parsed||typeof parsed!=="object"){parsed={}}parsed.gatewayUrl=gatewayUrl;if("token" in parsed){delete parsed.token}localStorage.setItem(scopedKey,JSON.stringify(parsed));}catch(_ignored){}})();</script>`
+		body = bytes.Replace(body, []byte("<head>"), []byte("<head>"+baseTag+bootstrapTag), 1)
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 		w.WriteHeader(resp.StatusCode)

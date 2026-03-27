@@ -6,6 +6,7 @@ import { fetchCatalogProviderDetail } from "@/api/llm";
 import type { CatalogProviderDetail } from "@/api/llm";
 import ProviderModelSelector from "@/components/ProviderModelSelector";
 import type { InstanceCreatePayload } from "@/types/instance";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface InstanceFormProps {
   onSubmit: (payload: InstanceCreatePayload) => void;
@@ -18,6 +19,7 @@ export default function InstanceForm({
   onCancel,
   loading,
 }: InstanceFormProps) {
+  const { isAdmin } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [cpuRequest, setCpuRequest] = useState("500m");
   const [cpuLimit, setCpuLimit] = useState("2000m");
@@ -72,18 +74,20 @@ export default function InstanceForm({
 
     const payload: InstanceCreatePayload = {
       display_name: displayName.trim(),
-      cpu_request: cpuRequest,
-      cpu_limit: cpuLimit,
-      memory_request: memoryRequest,
-      memory_limit: memoryLimit,
-      storage_homebrew: storageHomebrew,
-      storage_home: storageHome,
       brave_api_key: braveKey || null,
-      container_image: containerImage || null,
-      vnc_resolution: vncResolution || null,
       timezone: timezone || null,
       user_agent: userAgent || null,
     };
+    if (isAdmin) {
+      payload.cpu_request = cpuRequest;
+      payload.cpu_limit = cpuLimit;
+      payload.memory_request = memoryRequest;
+      payload.memory_limit = memoryLimit;
+      payload.storage_homebrew = storageHomebrew;
+      payload.storage_home = storageHome;
+      payload.container_image = containerImage || null;
+      payload.vnc_resolution = vncResolution || null;
+    }
 
     if (enabledProviders.length > 0) {
       payload.enabled_providers = enabledProviders;
@@ -119,30 +123,34 @@ export default function InstanceForm({
               className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              Agent Image Override
-            </label>
-            <input
-              type="text"
-              value={containerImage}
-              onChange={(e) => setContainerImage(e.target.value)}
-              placeholder={settings?.default_container_image ?? "glukw/openclaw-vnc-chromium:latest"}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              VNC Resolution Override
-            </label>
-            <input
-              type="text"
-              value={vncResolution}
-              onChange={(e) => setVncResolution(e.target.value)}
-              placeholder={settings?.default_vnc_resolution ?? "1920x1080"}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          {isAdmin ? (
+            <>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Agent Image Override
+                </label>
+                <input
+                  type="text"
+                  value={containerImage}
+                  onChange={(e) => setContainerImage(e.target.value)}
+                  placeholder={settings?.default_container_image ?? "glukw/openclaw-vnc-chromium:latest"}
+                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  VNC Resolution Override
+                </label>
+                <input
+                  type="text"
+                  value={vncResolution}
+                  onChange={(e) => setVncResolution(e.target.value)}
+                  placeholder={settings?.default_vnc_resolution ?? "1920x1080"}
+                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </>
+          ) : null}
           <div>
             <label className="block text-xs text-gray-500 mb-1">
               Timezone Override
@@ -212,49 +220,55 @@ export default function InstanceForm({
       </div>
 
       {/* Container Resources */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-sm font-medium text-gray-900 mb-4">Container Resources</h3>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: "CPU Request", value: cpuRequest, set: setCpuRequest },
-              { label: "CPU Limit", value: cpuLimit, set: setCpuLimit },
-              { label: "Memory Request", value: memoryRequest, set: setMemoryRequest },
-              { label: "Memory Limit", value: memoryLimit, set: setMemoryLimit },
-            ].map((field) => (
-              <div key={field.label}>
-                <label className="block text-xs text-gray-500 mb-1">
-                  {field.label}
-                </label>
-                <input
-                  type="text"
-                  value={field.value}
-                  onChange={(e) => field.set(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: "Homebrew Storage", value: storageHomebrew, set: setStorageHomebrew },
-              { label: "Home Storage", value: storageHome, set: setStorageHome },
-            ].map((field) => (
-              <div key={field.label}>
-                <label className="block text-xs text-gray-500 mb-1">
-                  {field.label}
-                </label>
-                <input
-                  type="text"
-                  value={field.value}
-                  onChange={(e) => field.set(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            ))}
+      {isAdmin ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="text-sm font-medium text-gray-900 mb-4">Container Resources</h3>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: "CPU Request", value: cpuRequest, set: setCpuRequest },
+                { label: "CPU Limit", value: cpuLimit, set: setCpuLimit },
+                { label: "Memory Request", value: memoryRequest, set: setMemoryRequest },
+                { label: "Memory Limit", value: memoryLimit, set: setMemoryLimit },
+              ].map((field) => (
+                <div key={field.label}>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {field.label}
+                  </label>
+                  <input
+                    type="text"
+                    value={field.value}
+                    onChange={(e) => field.set(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: "Homebrew Storage", value: storageHomebrew, set: setStorageHomebrew },
+                { label: "Home Storage", value: storageHome, set: setStorageHome },
+              ].map((field) => (
+                <div key={field.label}>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {field.label}
+                  </label>
+                  <input
+                    type="text"
+                    value={field.value}
+                    onChange={(e) => field.set(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-900">
+          User self-service uses the admin-approved base image and resource limits. Model selection, timezone, user-agent and per-instance API keys still stay configurable.
+        </div>
+      )}
 
       <div className="flex justify-end gap-3">
         <button

@@ -215,6 +215,28 @@ func calculateCost(models []database.ProviderModel, modelID string, inputTokens,
 	return (float64(inputTokens)*cost.Input + float64(cachedInputTokens)*cost.CacheRead + float64(outputTokens)*cost.Output) / 1_000_000
 }
 
+func resolveRequestedModelID(apiType, bodyModel, requestPath string) string {
+	modelID := strings.TrimSpace(bodyModel)
+	if modelID != "" {
+		return modelID
+	}
+
+	if apiType == "google-generative-ai" {
+		trimmedPath := strings.Trim(strings.TrimSpace(requestPath), "/")
+		if after, ok := strings.CutPrefix(trimmedPath, "models/"); ok {
+			if idx := strings.Index(after, ":"); idx >= 0 {
+				return after[:idx]
+			}
+			if idx := strings.Index(after, "/"); idx >= 0 {
+				return after[:idx]
+			}
+			return after
+		}
+	}
+
+	return ""
+}
+
 // handleProxy is the single handler for all gateway requests.
 func handleProxy(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
@@ -240,11 +262,12 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse model from request body for logging
+	// Parse model from request body or request path for logging/costing.
 	var reqBody struct {
 		Model string `json:"model"`
 	}
 	json.Unmarshal(body, &reqBody)
+	modelID := resolveRequestedModelID(apiType, reqBody.Model, r.URL.Path)
 
 	at := GetAPIType(apiType)
 	targetURL := buildTargetURL(baseURL, r.URL.Path, at, r.URL.Query())
@@ -265,8 +288,8 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		latencyMs := time.Since(start).Milliseconds()
 		http.Error(w, `{"error":{"message":"upstream request failed"}}`, http.StatusBadGateway)
-		logRequest(instanceID, providerID, reqBody.Model, 0, 0, 0, 0, http.StatusBadGateway, latencyMs, err.Error())
-		logLine(instanceID, providerKey, reqBody.Model, r.URL.Path, http.StatusBadGateway, latencyMs, 0, 0, 0, 0, err.Error())
+		logRequest(instanceID, providerID, modelID, 0, 0, 0, 0, http.StatusBadGateway, latencyMs, err.Error())
+		logLine(instanceID, providerKey, modelID, r.URL.Path, http.StatusBadGateway, latencyMs, 0, 0, 0, 0, err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -283,10 +306,10 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 
-	inputTokens, outputTokens, cachedInputTokens, costUSD, errMsg := processResponse(w, resp.Body, isStreaming, at, apiType, resp.StatusCode, providerModels, reqBody.Model)
+	inputTokens, outputTokens, cachedInputTokens, costUSD, errMsg := processResponse(w, resp.Body, isStreaming, at, apiType, resp.StatusCode, providerModels, modelID)
 	latencyMs := time.Since(start).Milliseconds()
-	logRequest(instanceID, providerID, reqBody.Model, inputTokens, outputTokens, cachedInputTokens, costUSD, resp.StatusCode, latencyMs, errMsg)
-	logLine(instanceID, providerKey, reqBody.Model, r.URL.Path, resp.StatusCode, latencyMs, inputTokens, outputTokens, cachedInputTokens, costUSD, errMsg)
+	logRequest(instanceID, providerID, modelID, inputTokens, outputTokens, cachedInputTokens, costUSD, resp.StatusCode, latencyMs, errMsg)
+	logLine(instanceID, providerKey, modelID, r.URL.Path, resp.StatusCode, latencyMs, inputTokens, outputTokens, cachedInputTokens, costUSD, errMsg)
 }
 
 // logResponseBody appends the raw upstream response body to the file specified by

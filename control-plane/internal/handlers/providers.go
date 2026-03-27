@@ -801,6 +801,24 @@ type UsageProviderInfo struct {
 	Name string `json:"name"`
 }
 
+type UsageCoverage struct {
+	TotalInstances      int      `json:"total_instances"`
+	AccessibleInstances int      `json:"accessible_instances"`
+	CollectedInstances  int      `json:"collected_instances"`
+	SkippedInstances    int      `json:"skipped_instances"`
+	Skipped             []string `json:"skipped,omitempty"`
+}
+
+type UsageStatsMeta struct {
+	Source          string         `json:"source"`
+	SourceLabel     string         `json:"source_label"`
+	CountLabel      string         `json:"count_label"`
+	TimeSeriesLabel string         `json:"time_series_label"`
+	Resettable      bool           `json:"resettable"`
+	Notes           []string       `json:"notes,omitempty"`
+	Coverage        *UsageCoverage `json:"coverage,omitempty"`
+}
+
 type UsageStatsResponse struct {
 	ByInstance  []InstanceUsageStat `json:"by_instance"`
 	ByProvider  []ProviderUsageStat `json:"by_provider"`
@@ -810,6 +828,7 @@ type UsageStatsResponse struct {
 	Instances   []UsageInstanceInfo `json:"instances"`
 	Providers   []UsageProviderInfo `json:"providers"`
 	Granularity string              `json:"granularity"`
+	Meta        UsageStatsMeta      `json:"meta"`
 }
 
 func GetUsageStats(w http.ResponseWriter, r *http.Request) {
@@ -841,9 +860,15 @@ func GetUsageStats(w http.ResponseWriter, r *http.Request) {
 		granularity = "day"
 	}
 
+	source := strings.ToLower(strings.TrimSpace(q.Get("source")))
+	if source == "" {
+		source = "agent"
+	}
+
 	// Build optional filters
 	var instanceFilter *uint
 	var providerFilter *uint
+	var providerFilterKey string
 	if v := q.Get("instance_id"); v != "" {
 		if id, err := strconv.ParseUint(v, 10, 32); err == nil {
 			uid := uint(id)
@@ -856,18 +881,89 @@ func GetUsageStats(w http.ResponseWriter, r *http.Request) {
 			providerFilter = &uid
 		}
 	}
+	if v := q.Get("provider_key"); v != "" {
+		providerFilterKey = v
+	} else if v := q.Get("provider"); v != "" {
+		if _, err := strconv.ParseUint(v, 10, 32); err == nil {
+			if providerFilter == nil {
+				if id, parseErr := strconv.ParseUint(v, 10, 32); parseErr == nil {
+					uid := uint(id)
+					providerFilter = &uid
+				}
+			}
+		} else {
+			providerFilterKey = v
+		}
+	}
+
+	var providers []database.LLMProvider
+	if err := database.DB.Order("id ASC").Find(&providers).Error; err != nil {
+		log.Printf("usage stats(providers): %v", err)
+		writeError(w, http.StatusInternalServerError, "Failed to load providers")
+		return
+	}
+
+	if providerFilterKey == "" && providerFilter != nil {
+		for _, provider := range providers {
+			if provider.ID == *providerFilter {
+				providerFilterKey = provider.Key
+				break
+			}
+		}
+	}
+
+	if source != "gateway" {
+		resp, err := aggregateAgentSessionUsage(r, startDate, endDate, instanceFilter, providerFilterKey, granularity)
+		if err != nil {
+			log.Printf("usage stats(agent): %v", err)
+			writeError(w, http.StatusInternalServerError, "Failed to aggregate agent session usage")
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	accessibleInstances, err := listAccessibleInstances(r)
+	if err != nil {
+		log.Printf("usage stats(instances): %v", err)
+		writeError(w, http.StatusInternalServerError, "Failed to load accessible instances")
+		return
+	}
+
+	_, providerInfos := buildUsageProviderLookup(providers)
+	accessibleIDs := make([]uint, 0, len(accessibleInstances))
+	type instInfo struct{ Name, DisplayName string }
+	instInfoMap := map[uint]instInfo{}
+	for _, inst := range accessibleInstances {
+		accessibleIDs = append(accessibleIDs, inst.ID)
+		instInfoMap[inst.ID] = instInfo{Name: inst.Name, DisplayName: inst.DisplayName}
+	}
+
+	provInfoMap := map[uint]struct{ Key, Name string }{}
+	for _, p := range providers {
+		provInfoMap[p.ID] = struct{ Key, Name string }{p.Key, p.Name}
+	}
+
+	filterProviderIDs := []uint(nil)
+	if providerFilter != nil {
+		filterProviderIDs = append(filterProviderIDs, *providerFilter)
+	} else if providerFilterKey != "" {
+		filterProviderIDs = matchedUsageProviderIDs(providers, providerFilterKey)
+	}
 
 	// Use DATE() to compare only the date part, making filtering format-agnostic
 	// regardless of how GORM/SQLite stores the time.Time value.
 	baseWhere := "DATE(requested_at) >= ? AND DATE(requested_at) <= ?"
 	baseArgs := []interface{}{startDate, endDate}
+	baseWhere, baseArgs = appendUintInFilter(baseWhere, baseArgs, "instance_id", accessibleIDs)
 	if instanceFilter != nil {
 		baseWhere += " AND instance_id = ?"
 		baseArgs = append(baseArgs, *instanceFilter)
 	}
-	if providerFilter != nil {
-		baseWhere += " AND provider_id = ?"
-		baseArgs = append(baseArgs, *providerFilter)
+	if len(filterProviderIDs) > 0 {
+		baseWhere, baseArgs = appendUintInFilter(baseWhere, baseArgs, "provider_id", filterProviderIDs)
+	} else if providerFilterKey != "" {
+		baseWhere += " AND 1=0"
 	}
 
 	// by_instance
@@ -931,31 +1027,32 @@ func GetUsageStats(w http.ResponseWriter, r *http.Request) {
 		baseArgs...,
 	).Scan(&tsRows)
 
-	// Load instance name map from main DB
-	var instances []database.Instance
-	database.DB.Select("id, name, display_name").Find(&instances)
-	type instInfo struct{ Name, DisplayName string }
-	instInfoMap := map[uint]instInfo{}
-	for _, inst := range instances {
-		instInfoMap[inst.ID] = instInfo{Name: inst.Name, DisplayName: inst.DisplayName}
-	}
-
-	// Load provider key/name map from main DB
-	var providers []database.LLMProvider
-	database.DB.Select("id, key, name").Find(&providers)
-	provInfoMap := map[uint]struct{ Key, Name string }{}
-	for _, p := range providers {
-		provInfoMap[p.ID] = struct{ Key, Name string }{p.Key, p.Name}
-	}
-
 	// Build response
 	resp := UsageStatsResponse{
-		ByInstance: make([]InstanceUsageStat, len(instRows)),
-		ByProvider: make([]ProviderUsageStat, len(provRows)),
-		ByModel:    make([]ModelUsageStat, len(modelRows)),
-		TimeSeries: make([]UsageTimePoint, len(tsRows)),
-		Instances:  make([]UsageInstanceInfo, len(instances)),
-		Providers:  make([]UsageProviderInfo, len(providers)),
+		ByInstance:  make([]InstanceUsageStat, len(instRows)),
+		ByProvider:  make([]ProviderUsageStat, len(provRows)),
+		ByModel:     make([]ModelUsageStat, len(modelRows)),
+		TimeSeries:  make([]UsageTimePoint, len(tsRows)),
+		Instances:   make([]UsageInstanceInfo, len(accessibleInstances)),
+		Providers:   providerInfos,
+		Granularity: granularity,
+		Meta: UsageStatsMeta{
+			Source:          "gateway",
+			SourceLabel:     "Gateway Logs",
+			CountLabel:      "Total Requests",
+			TimeSeriesLabel: "Requests Over Time",
+			Resettable:      true,
+			Notes: []string{
+				"Counts come from the central claworc LLM gateway request log.",
+				"This view can miss agent-side session activity that never passed through the shared gateway.",
+				"Use Agent Sessions for the most complete per-bot cost view, especially when an agent talks to providers through its own local gateway.",
+			},
+			Coverage: &UsageCoverage{
+				TotalInstances:      len(accessibleInstances),
+				AccessibleInstances: len(accessibleInstances),
+				CollectedInstances:  len(accessibleInstances),
+			},
+		},
 	}
 
 	for i, row := range instRows {
@@ -1016,14 +1113,9 @@ func GetUsageStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	for i, inst := range instances {
+	for i, inst := range accessibleInstances {
 		resp.Instances[i] = UsageInstanceInfo{ID: inst.ID, Name: inst.Name, DisplayName: inst.DisplayName}
 	}
-	for i, p := range providers {
-		resp.Providers[i] = UsageProviderInfo{ID: p.ID, Key: p.Key, Name: p.Name}
-	}
-
-	resp.Granularity = granularity
 	writeJSON(w, http.StatusOK, resp)
 }
 

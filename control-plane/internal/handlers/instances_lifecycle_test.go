@@ -81,8 +81,9 @@ func TestDeleteInstance_StopsTunnels(t *testing.T) {
 	defer orchestrator.Set(nil)
 
 	inst := createTestInstance(t, "bot-del", "Delete Test")
+	user := createTestUser(t, "admin")
 
-	req := buildRequest(t, "DELETE", "/api/v1/instances/1", nil, map[string]string{"id": fmt.Sprintf("%d", inst.ID)})
+	req := buildRequest(t, "DELETE", "/api/v1/instances/1", user, map[string]string{"id": fmt.Sprintf("%d", inst.ID)})
 	w := httptest.NewRecorder()
 
 	DeleteInstance(w, req)
@@ -108,8 +109,9 @@ func TestDeleteInstance_NilTunnelMgr(t *testing.T) {
 	defer orchestrator.Set(nil)
 
 	inst := createTestInstance(t, "bot-del", "Delete Test")
+	user := createTestUser(t, "admin")
 
-	req := buildRequest(t, "DELETE", "/api/v1/instances/1", nil, map[string]string{"id": fmt.Sprintf("%d", inst.ID)})
+	req := buildRequest(t, "DELETE", "/api/v1/instances/1", user, map[string]string{"id": fmt.Sprintf("%d", inst.ID)})
 	w := httptest.NewRecorder()
 
 	DeleteInstance(w, req)

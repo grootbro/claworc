@@ -87,5 +87,5 @@ func CanAccessInstance(r *http.Request, instanceID uint) bool {
 	if user.Role == "admin" {
 		return true
 	}
-	return database.IsUserAssignedToInstance(user.ID, instanceID)
+	return database.IsUserAssignedToInstance(user.ID, instanceID) || database.IsUserOwnerOfInstance(user.ID, instanceID)
 }

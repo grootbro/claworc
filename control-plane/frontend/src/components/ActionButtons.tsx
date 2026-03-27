@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import ConfirmDialog from "./ConfirmDialog";
 import type { Instance } from "@/types/instance";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ActionButtonsProps {
   instance: Instance;
@@ -31,22 +32,20 @@ export default function ActionButtons({
   onDelete,
   loading,
 }: ActionButtonsProps) {
+  const { user, isAdmin } = useAuth();
   const [showConfirm, setShowConfirm] = useState(false);
   const isStopped = instance.status === "stopped";
   const isRunning = instance.status === "running";
   const isRestarting = instance.status === "restarting";
   const isStopping = instance.status === "stopping";
   const isUnavailable = !isRunning;
+  const isOwner = instance.owner_user_id != null && instance.owner_user_id === user?.id;
+  const canManageOwnership = isAdmin || isOwner;
+  const canClone = isAdmin || (isOwner && Boolean(user?.can_create_instances));
 
-  const controlUrl = (() => {
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const gwUrl = `${wsProtocol}//${window.location.host}/openclaw/${instance.id}`;
-    const params = new URLSearchParams({
-      gatewayUrl: gwUrl,
-      session: "browser",
-    });
-    return `/openclaw/${instance.id}/chat?${params}#token=${encodeURIComponent(instance.gateway_token)}`;
-  })();
+  const gatewayProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const gatewayUrl = `${gatewayProtocol}://${window.location.host}/openclaw/${instance.id}`;
+  const controlUrl = `/openclaw/${instance.id}/chat?session=browser#gatewayUrl=${encodeURIComponent(gatewayUrl)}&token=${encodeURIComponent(instance.gateway_token)}`;
 
   const disabledLinkClass = "pointer-events-none opacity-30";
 
@@ -79,14 +78,16 @@ export default function ActionButtons({
         >
           <Terminal size={16} />
         </a>
-        <button
-          onClick={() => onClone(instance.id)}
-          disabled={loading || instance.status === "creating"}
-          title="Clone"
-          className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <Copy size={16} />
-        </button>
+        {canClone ? (
+          <button
+            onClick={() => onClone(instance.id)}
+            disabled={loading || instance.status === "creating"}
+            title="Clone"
+            className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Copy size={16} />
+          </button>
+        ) : null}
         <button
           onClick={() => onRestart(instance.id)}
           disabled={loading || !isRunning || isRestarting}
@@ -114,14 +115,16 @@ export default function ActionButtons({
             <Square size={16} />
           </button>
         )}
-        <button
-          onClick={() => setShowConfirm(true)}
-          disabled={loading}
-          title="Delete"
-          className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <Trash2 size={16} />
-        </button>
+        {canManageOwnership ? (
+          <button
+            onClick={() => setShowConfirm(true)}
+            disabled={loading}
+            title="Delete"
+            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Trash2 size={16} />
+          </button>
+        ) : null}
       </div>
       {showConfirm && (
         <ConfirmDialog

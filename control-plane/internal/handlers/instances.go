@@ -73,6 +73,7 @@ type instanceResponse struct {
 	Name                  string          `json:"name"`
 	DisplayName           string          `json:"display_name"`
 	Status                string          `json:"status"`
+	OwnerUserID           *uint           `json:"owner_user_id"`
 	CPURequest            string          `json:"cpu_request"`
 	CPULimit              string          `json:"cpu_limit"`
 	MemoryRequest         string          `json:"memory_request"`
@@ -100,6 +101,20 @@ type instanceResponse struct {
 	SortOrder             int             `json:"sort_order"`
 	CreatedAt             string          `json:"created_at"`
 	UpdatedAt             string          `json:"updated_at"`
+}
+
+func canSelfProvision(user *database.User) bool {
+	return user != nil && (user.Role == "admin" || user.CanCreateInstances)
+}
+
+func canManageOwnedInstance(user *database.User, inst database.Instance) bool {
+	if user == nil {
+		return false
+	}
+	if user.Role == "admin" {
+		return true
+	}
+	return inst.OwnerUserID != nil && *inst.OwnerUserID == user.ID
 }
 
 func generateName(displayName string) string {
@@ -274,6 +289,7 @@ func instanceToResponse(inst database.Instance, status string) instanceResponse 
 		Name:                  inst.Name,
 		DisplayName:           inst.DisplayName,
 		Status:                status,
+		OwnerUserID:           inst.OwnerUserID,
 		StatusMessage:         getStatusMessage(inst.ID),
 		CPURequest:            inst.CPURequest,
 		CPULimit:              inst.CPULimit,
@@ -394,13 +410,16 @@ func ListInstances(w http.ResponseWriter, r *http.Request) {
 
 	query := database.DB.Order("sort_order ASC, id ASC")
 	if user != nil && user.Role != "admin" {
-		// Non-admin users only see assigned instances
 		assignedIDs, err := database.GetUserInstances(user.ID)
-		if err != nil || len(assignedIDs) == 0 {
+		if err != nil {
 			writeJSON(w, http.StatusOK, []instanceResponse{})
 			return
 		}
-		query = query.Where("id IN ?", assignedIDs)
+		if len(assignedIDs) == 0 {
+			query = query.Where("owner_user_id = ?", user.ID)
+		} else {
+			query = query.Where("owner_user_id = ? OR id IN ?", user.ID, assignedIDs)
+		}
 	}
 
 	if err := query.Find(&instances).Error; err != nil {
@@ -454,6 +473,12 @@ func saveInstanceAPIKeys(instanceID uint, apiKeys map[string]string) error {
 }
 
 func CreateInstance(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
 	var body instanceCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body")
@@ -463,6 +488,36 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 	if body.DisplayName == "" {
 		writeError(w, http.StatusBadRequest, "display_name is required")
 		return
+	}
+
+	if user.Role != "admin" {
+		if !canSelfProvision(user) {
+			writeError(w, http.StatusForbidden, "Self-service instance creation is disabled for this account")
+			return
+		}
+		if user.MaxInstances > 0 {
+			ownedCount, err := database.CountOwnedInstances(user.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to check instance quota")
+				return
+			}
+			if ownedCount >= int64(user.MaxInstances) {
+				writeError(w, http.StatusForbidden, fmt.Sprintf("Instance quota reached (%d/%d)", ownedCount, user.MaxInstances))
+				return
+			}
+		}
+		if body.ContainerImage != nil && strings.TrimSpace(*body.ContainerImage) != "" {
+			writeError(w, http.StatusForbidden, "Only admins can override the agent image")
+			return
+		}
+		if body.VNCResolution != nil && strings.TrimSpace(*body.VNCResolution) != "" {
+			writeError(w, http.StatusForbidden, "Only admins can override the VNC resolution")
+			return
+		}
+		if body.CPURequest != "" || body.CPULimit != "" || body.MemoryRequest != "" || body.MemoryLimit != "" || body.StorageHomebrew != "" || body.StorageHome != "" {
+			writeError(w, http.StatusForbidden, "Only admins can override container resource limits")
+			return
+		}
 	}
 
 	// Set defaults
@@ -561,6 +616,7 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		Name:             name,
 		DisplayName:      body.DisplayName,
 		Status:           "creating",
+		OwnerUserID:      nil,
 		CPURequest:       body.CPURequest,
 		CPULimit:         body.CPULimit,
 		MemoryRequest:    body.MemoryRequest,
@@ -578,10 +634,19 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		EnabledProviders: string(enabledProvidersJSON),
 		SortOrder:        maxSortOrder + 1,
 	}
+	if user.Role != "admin" {
+		inst.OwnerUserID = &user.ID
+	}
 
 	if err := database.DB.Create(&inst).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to create instance")
 		return
+	}
+
+	if inst.OwnerUserID != nil {
+		if err := database.AddUserInstance(*inst.OwnerUserID, inst.ID); err != nil {
+			log.Printf("Failed to assign owner %d to instance %d: %v", *inst.OwnerUserID, inst.ID, err)
+		}
 	}
 
 	// Save API keys to the new table
@@ -702,12 +767,12 @@ type instanceUpdateRequest struct {
 	UserAgent        *string            `json:"user_agent"`
 	AllowedSourceIPs *string            `json:"allowed_source_ips"` // admin only: comma-separated IPs/CIDRs
 	EnabledProviders *[]uint            `json:"enabled_providers"`  // admin only: LLM gateway provider IDs
-	DisplayName      *string            `json:"display_name"`      // admin only
-	CPURequest       *string            `json:"cpu_request"`       // admin only
-	CPULimit         *string            `json:"cpu_limit"`         // admin only
-	MemoryRequest    *string            `json:"memory_request"`    // admin only
-	MemoryLimit      *string            `json:"memory_limit"`      // admin only
-	VNCResolution    *string            `json:"vnc_resolution"`    // admin only
+	DisplayName      *string            `json:"display_name"`       // admin only
+	CPURequest       *string            `json:"cpu_request"`        // admin only
+	CPULimit         *string            `json:"cpu_limit"`          // admin only
+	MemoryRequest    *string            `json:"memory_request"`     // admin only
+	MemoryLimit      *string            `json:"memory_limit"`       // admin only
+	VNCResolution    *string            `json:"vnc_resolution"`     // admin only
 }
 
 var (
@@ -1151,6 +1216,14 @@ func DeleteInstance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Instance not found")
 		return
 	}
+	if !middleware.CanAccessInstance(r, inst.ID) {
+		writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+	if !canManageOwnedInstance(middleware.GetUser(r), inst) {
+		writeError(w, http.StatusForbidden, "Only the owner or an admin can delete this instance")
+		return
+	}
 
 	// Stop SSH tunnels and close connection before deleting
 	if SSHMgr != nil {
@@ -1169,6 +1242,7 @@ func DeleteInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete associated API keys and gateway keys
+	database.DB.Where("instance_id = ?", inst.ID).Delete(&database.UserInstance{})
 	database.DB.Where("instance_id = ?", inst.ID).Delete(&database.InstanceAPIKey{})
 	database.DB.Where("instance_id = ?", inst.ID).Delete(&database.LLMGatewayKey{})
 	database.DB.Delete(&inst)
@@ -1499,6 +1573,32 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Instance not found")
 		return
 	}
+	if !middleware.CanAccessInstance(r, src.ID) {
+		writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+	user := middleware.GetUser(r)
+	if !canManageOwnedInstance(user, src) {
+		writeError(w, http.StatusForbidden, "Only the owner or an admin can clone this instance")
+		return
+	}
+	if user != nil && user.Role != "admin" {
+		if !canSelfProvision(user) {
+			writeError(w, http.StatusForbidden, "Self-service instance creation is disabled for this account")
+			return
+		}
+		if user.MaxInstances > 0 {
+			ownedCount, err := database.CountOwnedInstances(user.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to check instance quota")
+				return
+			}
+			if ownedCount >= int64(user.MaxInstances) {
+				writeError(w, http.StatusForbidden, fmt.Sprintf("Instance quota reached (%d/%d)", ownedCount, user.MaxInstances))
+				return
+			}
+		}
+	}
 
 	// Generate clone display name and K8s-safe name
 	cloneDisplayName := src.DisplayName + " (Copy)"
@@ -1531,6 +1631,7 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 		Name:            cloneName,
 		DisplayName:     cloneDisplayName,
 		Status:          "creating",
+		OwnerUserID:     src.OwnerUserID,
 		CPURequest:      src.CPURequest,
 		CPULimit:        src.CPULimit,
 		MemoryRequest:   src.MemoryRequest,
@@ -1551,6 +1652,11 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 	if err := database.DB.Create(&inst).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to create cloned instance")
 		return
+	}
+	if inst.OwnerUserID != nil {
+		if err := database.AddUserInstance(*inst.OwnerUserID, inst.ID); err != nil {
+			log.Printf("Failed to assign owner %d to cloned instance %d: %v", *inst.OwnerUserID, inst.ID, err)
+		}
 	}
 
 	// Copy API keys from source instance

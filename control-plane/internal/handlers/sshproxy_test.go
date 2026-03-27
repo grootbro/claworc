@@ -279,6 +279,12 @@ func TestProxyToLocalPort_RewritesHTMLBaseAndDisablesCaching(t *testing.T) {
 	if !strings.Contains(bodyText, `<base href="/openclaw/2/">`) {
 		t.Fatalf("expected base tag injection, got body: %s", bodyText)
 	}
+	if !strings.Contains(bodyText, `window.__OPENCLAW_CONTROL_UI_BASE_PATH__=base`) {
+		t.Fatalf("expected control-ui base path bootstrap, got body: %s", bodyText)
+	}
+	if !strings.Contains(bodyText, `openclaw.control.settings.v1:`) {
+		t.Fatalf("expected scoped storage bootstrap, got body: %s", bodyText)
+	}
 	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
 		t.Fatalf("expected Cache-Control no-store for rewritten HTML, got %q", got)
 	}

@@ -260,13 +260,14 @@ func main() {
 			// Desktop proxy (noVNC/websockify)
 			r.HandleFunc("/instances/{id}/desktop/*", handlers.DesktopProxy)
 
+			// Self-service instance lifecycle (handlers enforce owner/admin restrictions)
+			r.Post("/instances", handlers.CreateInstance)
+			r.Post("/instances/{id}/clone", handlers.CloneInstance)
+			r.Delete("/instances/{id}", handlers.DeleteInstance)
+
 			// Admin-only routes
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireAdmin)
-
-				r.Post("/instances", handlers.CreateInstance)
-				r.Post("/instances/{id}/clone", handlers.CloneInstance)
-				r.Delete("/instances/{id}", handlers.DeleteInstance)
 
 				// Settings
 				r.Get("/settings", handlers.GetSettings)
@@ -302,6 +303,7 @@ func main() {
 				r.Post("/users", handlers.CreateUser)
 				r.Delete("/users/{userId}", handlers.DeleteUser)
 				r.Put("/users/{userId}/role", handlers.UpdateUserRole)
+				r.Put("/users/{userId}/limits", handlers.UpdateUserLimits)
 				r.Get("/users/{userId}/instances", handlers.GetUserAssignedInstances)
 				r.Put("/users/{userId}/instances", handlers.SetUserAssignedInstances)
 				r.Post("/users/{userId}/reset-password", handlers.ResetUserPassword)
@@ -313,6 +315,7 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionStore))
 		r.HandleFunc("/openclaw/{id}", handlers.ControlProxy)
+		r.HandleFunc("/openclaw/{id}/", handlers.ControlProxy)
 		r.HandleFunc("/openclaw/{id}/*", handlers.ControlProxy)
 	})
 

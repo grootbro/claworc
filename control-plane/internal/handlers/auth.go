@@ -68,9 +68,11 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	setSessionCookie(w, r, sessionID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":       user.ID,
-		"username": user.Username,
-		"role":     user.Role,
+		"id":                   user.ID,
+		"username":             user.Username,
+		"role":                 user.Role,
+		"can_create_instances": user.CanCreateInstances,
+		"max_instances":        user.MaxInstances,
 	})
 }
 
@@ -90,9 +92,11 @@ func GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":       user.ID,
-		"username": user.Username,
-		"role":     user.Role,
+		"id":                   user.ID,
+		"username":             user.Username,
+		"role":                 user.Role,
+		"can_create_instances": user.CanCreateInstances,
+		"max_instances":        user.MaxInstances,
 	})
 }
 
@@ -154,9 +158,11 @@ func SetupCreateAdmin(w http.ResponseWriter, r *http.Request) {
 
 	setSessionCookie(w, r, sessionID)
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":       user.ID,
-		"username": user.Username,
-		"role":     user.Role,
+		"id":                   user.ID,
+		"username":             user.Username,
+		"role":                 user.Role,
+		"can_create_instances": user.CanCreateInstances,
+		"max_instances":        user.MaxInstances,
 	})
 }
 
@@ -338,9 +344,11 @@ func WebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
 
 	setSessionCookie(w, r, sessionID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":       user.ID,
-		"username": user.Username,
-		"role":     user.Role,
+		"id":                   user.ID,
+		"username":             user.Username,
+		"role":                 user.Role,
+		"can_create_instances": user.CanCreateInstances,
+		"max_instances":        user.MaxInstances,
 	})
 }
 

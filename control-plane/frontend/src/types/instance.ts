@@ -9,6 +9,7 @@ export interface Instance {
   name: string;
   display_name: string;
   status: "creating" | "running" | "restarting" | "stopping" | "stopped" | "error";
+  owner_user_id?: number | null;
   status_message?: string;
   cpu_request: string;
   cpu_limit: string;

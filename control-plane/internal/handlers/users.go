@@ -19,18 +19,22 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type userResponse struct {
-		ID        uint   `json:"id"`
-		Username  string `json:"username"`
-		Role      string `json:"role"`
-		CreatedAt string `json:"created_at"`
+		ID                 uint   `json:"id"`
+		Username           string `json:"username"`
+		Role               string `json:"role"`
+		CanCreateInstances bool   `json:"can_create_instances"`
+		MaxInstances       int    `json:"max_instances"`
+		CreatedAt          string `json:"created_at"`
 	}
 	result := make([]userResponse, 0, len(users))
 	for _, u := range users {
 		result = append(result, userResponse{
-			ID:        u.ID,
-			Username:  u.Username,
-			Role:      u.Role,
-			CreatedAt: formatTimestamp(u.CreatedAt),
+			ID:                 u.ID,
+			Username:           u.Username,
+			Role:               u.Role,
+			CanCreateInstances: u.CanCreateInstances,
+			MaxInstances:       u.MaxInstances,
+			CreatedAt:          formatTimestamp(u.CreatedAt),
 		})
 	}
 
@@ -39,9 +43,11 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Username           string `json:"username"`
+		Password           string `json:"password"`
+		Role               string `json:"role"`
+		CanCreateInstances bool   `json:"can_create_instances"`
+		MaxInstances       int    `json:"max_instances"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body")
@@ -60,6 +66,10 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Role must be 'admin' or 'user'")
 		return
 	}
+	if body.MaxInstances < 0 {
+		writeError(w, http.StatusBadRequest, "max_instances cannot be negative")
+		return
+	}
 
 	hash, err := auth.HashPassword(body.Password)
 	if err != nil {
@@ -68,9 +78,11 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := &database.User{
-		Username:     body.Username,
-		PasswordHash: hash,
-		Role:         body.Role,
+		Username:           body.Username,
+		PasswordHash:       hash,
+		Role:               body.Role,
+		CanCreateInstances: body.CanCreateInstances,
+		MaxInstances:       body.MaxInstances,
 	}
 	if err := database.CreateUser(user); err != nil {
 		writeError(w, http.StatusConflict, "Username already exists")
@@ -78,9 +90,11 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":       user.ID,
-		"username": user.Username,
-		"role":     user.Role,
+		"id":                   user.ID,
+		"username":             user.Username,
+		"role":                 user.Role,
+		"can_create_instances": user.CanCreateInstances,
+		"max_instances":        user.MaxInstances,
 	})
 }
 
@@ -214,6 +228,37 @@ func ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 
 	// Invalidate all sessions for this user
 	SessionStore.DeleteByUserID(uint(id))
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func UpdateUserLimits(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "userId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	var body struct {
+		CanCreateInstances bool `json:"can_create_instances"`
+		MaxInstances       int  `json:"max_instances"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if body.MaxInstances < 0 {
+		writeError(w, http.StatusBadRequest, "max_instances cannot be negative")
+		return
+	}
+
+	if err := database.DB.Model(&database.User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"can_create_instances": body.CanCreateInstances,
+		"max_instances":        body.MaxInstances,
+	}).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to update user limits")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

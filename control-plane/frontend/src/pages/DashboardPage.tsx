@@ -15,8 +15,10 @@ import {
   useReorderInstances,
 } from "@/hooks/useInstances";
 import type { Instance } from "@/types/instance";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function DashboardPage() {
+  const { user, isAdmin } = useAuth();
   const { data: instances, isLoading } = useInstances();
   useRestartedToast(instances);
   useCreationToast(instances);
@@ -52,21 +54,38 @@ export default function DashboardPage() {
   };
 
   const loadingInstanceId = getLoadingInstanceId();
+  const canCreateInstances = isAdmin || Boolean(user?.can_create_instances);
 
   return (
     <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-semibold text-gray-900">Instances</h1>
+        {canCreateInstances ? (
+          <Link
+            to="/instances/new"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+          >
+            <Plus size={16} />
+            Create Instance
+          </Link>
+        ) : null}
+      </div>
       {isLoading ? (
         <div className="text-center py-12 text-gray-500">Loading...</div>
       ) : !instances || instances.length === 0 ? (
         <div className="text-center py-12">
           <p data-testid="empty-state-message" className="text-gray-500 mb-4">No instances yet.</p>
-          <Link
-            to="/instances/new"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-          >
-            <Plus size={16} />
-            Create your first instance
-          </Link>
+          {canCreateInstances ? (
+            <Link
+              to="/instances/new"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+            >
+              <Plus size={16} />
+              Create your first instance
+            </Link>
+          ) : (
+            <p className="text-sm text-gray-400">Ask an admin to assign an instance or enable self-service for your account.</p>
+          )}
         </div>
       ) : (
         <InstanceTable

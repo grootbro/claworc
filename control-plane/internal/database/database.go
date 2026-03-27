@@ -208,6 +208,27 @@ func IsUserAssignedToInstance(userID, instanceID uint) bool {
 	return count > 0
 }
 
+func AddUserInstance(userID, instanceID uint) error {
+	var link UserInstance
+	err := DB.Where("user_id = ? AND instance_id = ?", userID, instanceID).First(&link).Error
+	if err == nil {
+		return nil
+	}
+	return DB.Create(&UserInstance{UserID: userID, InstanceID: instanceID}).Error
+}
+
+func CountOwnedInstances(userID uint) (int64, error) {
+	var count int64
+	err := DB.Model(&Instance{}).Where("owner_user_id = ?", userID).Count(&count).Error
+	return count, err
+}
+
+func IsUserOwnerOfInstance(userID, instanceID uint) bool {
+	var count int64
+	DB.Model(&Instance{}).Where("id = ? AND owner_user_id = ?", instanceID, userID).Count(&count)
+	return count > 0
+}
+
 // WebAuthn credential helpers
 
 func GetWebAuthnCredentials(userID uint) ([]WebAuthnCredential, error) {
