@@ -62,12 +62,13 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         // No navigateFallback — server handles SPA routing.
-        // This prevents the SW from intercepting navigation to /openclaw/.
+        // OpenClaw runs as a nested foreign SPA under /openclaw/* and should
+        // bypass this app's service worker entirely.
         // Must be explicitly null to override VitePWA's default of "index.html".
         navigateFallback: null,
         runtimeCaching: [
           {
-            urlPattern: /^https?:\/\/.*\/(api|openclaw)\//,
+            urlPattern: /^https?:\/\/.*\/api\//,
             handler: "NetworkOnly",
           },
         ],

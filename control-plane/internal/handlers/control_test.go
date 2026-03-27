@@ -183,6 +183,77 @@ func TestControlProxy_HTTPProxy(t *testing.T) {
 	}
 }
 
+func TestControlProxy_HTTPProxyRootPath(t *testing.T) {
+	setupTestDB(t)
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"path":"%s","query":"%s"}`, r.URL.Path, r.URL.RawQuery)
+	}))
+	defer backend.Close()
+
+	_, portStr, _ := net.SplitHostPort(strings.TrimPrefix(backend.URL, "http://"))
+	var backendPort int
+	fmt.Sscanf(portStr, "%d", &backendPort)
+
+	pubKeyBytes, privKeyPEM, err := sshproxy.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+	signer, err := sshproxy.ParsePrivateKey(privKeyPEM)
+	if err != nil {
+		t.Fatalf("parse private key: %v", err)
+	}
+
+	addr, cleanup := testSSHServer(t, signer.PublicKey())
+	defer cleanup()
+
+	host, sshPortStr, _ := net.SplitHostPort(addr)
+	var sshPort int
+	fmt.Sscanf(sshPortStr, "%d", &sshPort)
+
+	mgr := sshproxy.NewSSHManager(signer, string(pubKeyBytes))
+	defer mgr.CloseAll()
+
+	inst := createTestInstance(t, "bot-test", "Test")
+
+	_, err = mgr.Connect(context.Background(), inst.ID, host, sshPort)
+	if err != nil {
+		t.Fatalf("SSH connect: %v", err)
+	}
+
+	tm := sshproxy.NewTunnelManager(mgr)
+	TunnelMgr = tm
+	defer func() { TunnelMgr = nil }()
+
+	if _, err := tm.CreateTunnelForGateway(context.Background(), inst.ID, backendPort); err != nil {
+		t.Fatalf("create gateway tunnel: %v", err)
+	}
+
+	user := createTestUser(t, "admin")
+	req := buildRequest(t, "GET", fmt.Sprintf("/openclaw/%d?foo=bar", inst.ID), user, map[string]string{
+		"id": fmt.Sprintf("%d", inst.ID),
+		"*":  "",
+	})
+	req.URL.RawQuery = "foo=bar"
+	w := httptest.NewRecorder()
+
+	ControlProxy(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d (body: %s)", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"path":"/"`) {
+		t.Fatalf("expected upstream root path, got body: %s", body)
+	}
+	if !strings.Contains(body, `"query":"foo=bar"`) {
+		t.Fatalf("expected query forwarding, got body: %s", body)
+	}
+}
+
 // --- ControlProxy WebSocket tests ---
 
 func TestControlProxy_WebSocketProxy(t *testing.T) {

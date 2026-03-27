@@ -312,6 +312,7 @@ func main() {
 	// OpenClaw control proxy (top-level, outside /api/v1/)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionStore))
+		r.HandleFunc("/openclaw/{id}", handlers.ControlProxy)
 		r.HandleFunc("/openclaw/{id}/*", handlers.ControlProxy)
 	})
 

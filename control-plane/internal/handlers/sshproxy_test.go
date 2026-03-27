@@ -254,6 +254,36 @@ func TestProxyToLocalPort_StatusCodeForwarded(t *testing.T) {
 	}
 }
 
+func TestProxyToLocalPort_RewritesHTMLBaseAndDisablesCaching(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		fmt.Fprint(w, "<html><head></head><body>ok</body></html>")
+	}))
+	defer backend.Close()
+
+	_, portStr, _ := net.SplitHostPort(strings.TrimPrefix(backend.URL, "http://"))
+	var port int
+	fmt.Sscanf(portStr, "%d", &port)
+
+	req := httptest.NewRequest("GET", "/openclaw/2/", nil)
+	w := httptest.NewRecorder()
+
+	if err := proxyToLocalPort(w, req, port, "", "/openclaw/2/"); err != nil {
+		t.Fatalf("proxyToLocalPort returned error: %v", err)
+	}
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	bodyText := string(body)
+	if !strings.Contains(bodyText, `<base href="/openclaw/2/">`) {
+		t.Fatalf("expected base tag injection, got body: %s", bodyText)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("expected Cache-Control no-store for rewritten HTML, got %q", got)
+	}
+}
+
 // --- websocketProxyToLocalPort tests ---
 
 func TestWebsocketProxyToLocalPort_Success(t *testing.T) {

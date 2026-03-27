@@ -129,6 +129,7 @@ func proxyToLocalPort(w http.ResponseWriter, r *http.Request, port int, path str
 		}
 		baseTag := `<base href="` + rewriteBase[0] + `">`
 		body = bytes.Replace(body, []byte("<head>"), []byte("<head>"+baseTag), 1)
+		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 		w.WriteHeader(resp.StatusCode)
 		w.Write(body)
