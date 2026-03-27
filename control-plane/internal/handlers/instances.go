@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"slices"
 
 	"github.com/gluk-w/claworc/control-plane/internal/config"
 	"github.com/gluk-w/claworc/control-plane/internal/database"
@@ -41,6 +42,12 @@ func getStatusMessage(id uint) string {
 type modelsConfig struct {
 	Disabled []string `json:"disabled"`
 	Extra    []string `json:"extra"`
+}
+
+var recommendedDefaultModels = []string{
+	"gemini/gemini-3-flash-preview",
+	"gemini/gemini-2.5-flash",
+	"openai/gpt-5.2",
 }
 
 type instanceCreateRequest struct {
@@ -166,13 +173,21 @@ func parseModelsConfig(raw string) modelsConfig {
 	return mc
 }
 
-func computeEffectiveModels(mc modelsConfig) []string {
-	// Get global default models
+func getDefaultModels() []string {
 	defaultModelsJSON, _ := database.GetSetting("default_models")
 	var defaults []string
 	if defaultModelsJSON != "" {
 		json.Unmarshal([]byte(defaultModelsJSON), &defaults)
 	}
+	defaults = dedupeStrings(defaults)
+	if len(defaults) == 0 {
+		return append([]string(nil), recommendedDefaultModels...)
+	}
+	return defaults
+}
+
+func computeEffectiveModels(mc modelsConfig) []string {
+	defaults := getDefaultModels()
 
 	disabledSet := make(map[string]bool)
 	for _, d := range mc.Disabled {
@@ -190,6 +205,84 @@ func computeEffectiveModels(mc modelsConfig) []string {
 		effective = []string{}
 	}
 	return effective
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	if out == nil {
+		return []string{}
+	}
+	return out
+}
+
+func normalizeModelsConfig(mc modelsConfig, defaultModel string) modelsConfig {
+	mc.Disabled = dedupeStrings(mc.Disabled)
+	mc.Extra = dedupeStrings(mc.Extra)
+
+	if defaultModel != "" && !slices.Contains(getDefaultModels(), defaultModel) && !slices.Contains(mc.Extra, defaultModel) {
+		mc.Extra = append([]string{defaultModel}, mc.Extra...)
+	}
+
+	return mc
+}
+
+func normalizeEnabledProviders(enabled []uint, selectedModels []string) []uint {
+	set := make(map[uint]struct{}, len(enabled))
+	result := make([]uint, 0, len(enabled))
+	for _, id := range enabled {
+		if _, ok := set[id]; ok {
+			continue
+		}
+		set[id] = struct{}{}
+		result = append(result, id)
+	}
+
+	providerKeys := make(map[string]struct{})
+	for _, model := range selectedModels {
+		providerKey, _, ok := strings.Cut(model, "/")
+		if !ok || providerKey == "" {
+			continue
+		}
+		providerKeys[providerKey] = struct{}{}
+	}
+	if len(providerKeys) == 0 {
+		return result
+	}
+
+	keys := make([]string, 0, len(providerKeys))
+	for key := range providerKeys {
+		keys = append(keys, key)
+	}
+
+	var providers []database.LLMProvider
+	database.DB.Where("key IN ?", keys).Find(&providers)
+	extraIDs := make([]uint, 0, len(providers))
+	for _, provider := range providers {
+		if _, ok := set[provider.ID]; ok {
+			continue
+		}
+		set[provider.ID] = struct{}{}
+		extraIDs = append(extraIDs, provider.ID)
+	}
+	slices.Sort(extraIDs)
+	result = append(result, extraIDs...)
+
+	return result
 }
 
 // GatewayProvider holds the virtual auth key, API type, and models for a gateway provider.
@@ -601,26 +694,15 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		userAgent = *body.UserAgent
 	}
 
-	// Serialize models config
-	var modelsConfigJSON string
+	mc := modelsConfig{}
 	if body.Models != nil {
-		if body.Models.Disabled == nil {
-			body.Models.Disabled = []string{}
-		}
-		if body.Models.Extra == nil {
-			body.Models.Extra = []string{}
-		}
-		b, _ := json.Marshal(body.Models)
-		modelsConfigJSON = string(b)
-	} else {
-		modelsConfigJSON = "{}"
+		mc = *body.Models
 	}
+	mc = normalizeModelsConfig(mc, body.DefaultModel)
+	modelsConfigJSONBytes, _ := json.Marshal(mc)
+	modelsConfigJSON := string(modelsConfigJSONBytes)
 
-	// Serialize enabled providers
-	enabledProviders := body.EnabledProviders
-	if enabledProviders == nil {
-		enabledProviders = []uint{}
-	}
+	enabledProviders := normalizeEnabledProviders(body.EnabledProviders, computeEffectiveModels(mc))
 	enabledProvidersJSON, _ := json.Marshal(enabledProviders)
 
 	// Compute next sort_order
@@ -885,9 +967,20 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	nextModels := parseModelsConfig(inst.ModelsConfig)
+	if body.Models != nil {
+		nextModels = *body.Models
+	}
+	nextDefaultModel := inst.DefaultModel
+	if body.DefaultModel != nil {
+		nextDefaultModel = *body.DefaultModel
+	}
+	nextModels = normalizeModelsConfig(nextModels, nextDefaultModel)
+	effectiveModels := computeEffectiveModels(nextModels)
+
 	// Update default model
 	if body.DefaultModel != nil {
-		database.DB.Model(&inst).Update("default_model", *body.DefaultModel)
+		database.DB.Model(&inst).Update("default_model", nextDefaultModel)
 	}
 
 	// Update timezone
@@ -918,14 +1011,8 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update models config
-	if body.Models != nil {
-		if body.Models.Disabled == nil {
-			body.Models.Disabled = []string{}
-		}
-		if body.Models.Extra == nil {
-			body.Models.Extra = []string{}
-		}
-		b, _ := json.Marshal(body.Models)
+	if body.Models != nil || body.DefaultModel != nil {
+		b, _ := json.Marshal(nextModels)
 		database.DB.Model(&inst).Update("models_config", string(b))
 	}
 
@@ -936,9 +1023,10 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "Only admins can configure LLM gateway providers")
 			return
 		}
-		b, _ := json.Marshal(*body.EnabledProviders)
+		normalizedProviders := normalizeEnabledProviders(*body.EnabledProviders, effectiveModels)
+		b, _ := json.Marshal(normalizedProviders)
 		database.DB.Model(&inst).Update("enabled_providers", string(b))
-		if err := llmgateway.EnsureKeysForInstance(inst.ID, *body.EnabledProviders); err != nil {
+		if err := llmgateway.EnsureKeysForInstance(inst.ID, normalizedProviders); err != nil {
 			log.Printf("Failed to ensure LLM gateway keys for instance %d: %s", inst.ID, utils.SanitizeForLog(err.Error()))
 		}
 	}

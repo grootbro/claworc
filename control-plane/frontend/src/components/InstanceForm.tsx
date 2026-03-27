@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useSettings } from "@/hooks/useSettings";
 import { useProviders } from "@/hooks/useProviders";
@@ -13,6 +13,12 @@ interface InstanceFormProps {
   onCancel: () => void;
   loading?: boolean;
 }
+
+const FALLBACK_MODEL_PRESET = [
+  "gemini/gemini-3-flash-preview",
+  "gemini/gemini-2.5-flash",
+  "openai/gpt-5.2",
+];
 
 export default function InstanceForm({
   onSubmit,
@@ -49,14 +55,55 @@ export default function InstanceForm({
   catalogKeys.forEach((key, i) => {
     if (catalogDetailResults[i]?.data) catalogDetailMap[key] = catalogDetailResults[i].data!;
   });
+  const catalogReady = allProviders.every((p) => !p.provider || Boolean(catalogDetailMap[p.provider]));
 
   // Gateway providers + model selection
   const [enabledProviders, setEnabledProviders] = useState<number[]>([]);
   const [providerModels, setProviderModels] = useState<Record<number, string[]>>({});
   const [defaultModel, setDefaultModel] = useState<string>("");
+  const [didInitModels, setDidInitModels] = useState(false);
 
   // Brave key
   const [braveKey, setBraveKey] = useState("");
+
+  useEffect(() => {
+    if (didInitModels || allProviders.length === 0 || !catalogReady) return;
+
+    const presetModels = settings?.default_models?.length
+      ? settings.default_models
+      : FALLBACK_MODEL_PRESET;
+
+    const nextEnabled = new Set<number>();
+    const nextProviderModels: Record<number, string[]> = {};
+    let nextDefaultModel = "";
+
+    for (const fullModel of presetModels) {
+      const [providerKey, modelId] = fullModel.split("/", 2);
+      if (!providerKey || !modelId) continue;
+
+      const provider = allProviders.find((p) => p.key === providerKey);
+      if (!provider) continue;
+
+      const availableModelIDs = provider.provider
+        ? (catalogDetailMap[provider.provider]?.models ?? []).map((m) => m.model_id)
+        : (provider.models ?? []).map((m) => m.id);
+      if (!availableModelIDs.includes(modelId)) continue;
+
+      nextEnabled.add(provider.id);
+      nextProviderModels[provider.id] = [...(nextProviderModels[provider.id] ?? []), modelId];
+      if (!nextDefaultModel) nextDefaultModel = fullModel;
+    }
+
+    if (nextEnabled.size === 0) {
+      setDidInitModels(true);
+      return;
+    }
+
+    setEnabledProviders([...nextEnabled]);
+    setProviderModels(nextProviderModels);
+    setDefaultModel(nextDefaultModel);
+    setDidInitModels(true);
+  }, [allProviders, catalogDetailMap, catalogReady, didInitModels, settings?.default_models]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,6 +244,7 @@ export default function InstanceForm({
             providerModels={providerModels}
             defaultModel={defaultModel}
             onUpdate={(newEnabled, newModels, newDefault) => {
+              setDidInitModels(true);
               setEnabledProviders(newEnabled);
               setProviderModels(newModels);
               setDefaultModel(newDefault);

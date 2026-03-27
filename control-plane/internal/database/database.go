@@ -66,7 +66,7 @@ func seedDefaults() error {
 		"default_container_image":      envOrDefault("CLAWORC_DEFAULT_CONTAINER_IMAGE", "glukw/openclaw-vnc-chromium:latest"),
 		"default_vnc_resolution":       "1920x1080",
 		"orchestrator_backend":         "auto",
-		"default_models":               "[]",
+		"default_models":               envOrDefault("CLAWORC_DEFAULT_MODELS", "[\"gemini/gemini-3-flash-preview\",\"gemini/gemini-2.5-flash\",\"openai/gpt-5.2\"]"),
 		"ssh_key_rotation_policy_days": "90",
 		"ssh_audit_retention_days":     "90",
 		"default_timezone":             "America/New_York",
