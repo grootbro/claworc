@@ -45,7 +45,7 @@ export default function ProviderModelSelector({
     });
   };
 
-  const handleModelToggle = (p: LLMProvider, modelId: string, availableModels: ModelEntry[]) => {
+  const handleModelToggle = (p: LLMProvider, modelId: string) => {
     const current = providerModels[p.id] ?? [];
     const next = current.includes(modelId)
       ? current.filter((x) => x !== modelId)
@@ -126,7 +126,7 @@ export default function ProviderModelSelector({
                 {iconKey ? (
                   <ProviderIcon provider={iconKey} size={18} />
                 ) : (
-                  <span className="text-xs font-semibold text-gray-500">{p.name[0].toUpperCase()}</span>
+                  <span className="text-xs font-semibold text-gray-500">{p.name.charAt(0).toUpperCase()}</span>
                 )}
               </div>
 
@@ -210,7 +210,7 @@ export default function ProviderModelSelector({
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={() => handleModelToggle(p, m.id, availableModels)}
+                            onChange={() => handleModelToggle(p, m.id)}
                             className="mt-0.5 rounded border-gray-300 shrink-0"
                           />
                           <div className="flex-1 min-w-0">

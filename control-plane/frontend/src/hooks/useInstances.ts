@@ -18,6 +18,7 @@ import {
   reorderInstances,
   fetchInstanceStats,
   updateInstanceImage,
+  runInstanceDoctor,
 } from "@/api/instances";
 import type { Instance, InstanceCreatePayload, InstanceUpdatePayload } from "@/types/instance";
 
@@ -137,6 +138,19 @@ export function useUpdateInstanceImage() {
     },
     onError: (error: any) => {
       errorToast("Failed to update image", error);
+    },
+  });
+}
+
+export function useInstanceDoctor() {
+  return useMutation({
+    mutationFn: ({ id, fix = false }: { id: number; fix?: boolean }) =>
+      runInstanceDoctor(id, fix),
+    onError: (error: any, variables) => {
+      errorToast(
+        variables.fix ? "Failed to apply doctor fixes" : "Failed to run doctor",
+        error,
+      );
     },
   });
 }

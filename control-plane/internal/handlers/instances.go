@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -1397,6 +1399,91 @@ func UpdateInstanceConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"config":    body.Config,
 		"restarted": true,
+	})
+}
+
+func RunInstanceDoctor(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var inst database.Instance
+	if err := database.DB.First(&inst, id).Error; err != nil {
+		writeError(w, http.StatusNotFound, "Instance not found")
+		return
+	}
+
+	if !middleware.CanAccessInstance(r, inst.ID) {
+		writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+
+	var body struct {
+		Fix bool `json:"fix"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+	}
+
+	if body.Fix {
+		user := middleware.GetUser(r)
+		if user == nil || user.Role != "admin" {
+			writeError(w, http.StatusForbidden, "Only admins can apply doctor fixes")
+			return
+		}
+	}
+
+	orch := orchestrator.Get()
+	if orch == nil {
+		writeError(w, http.StatusServiceUnavailable, "No orchestrator available")
+		return
+	}
+
+	orchStatus, _ := orch.GetInstanceStatus(r.Context(), inst.Name)
+	if orchStatus != "running" {
+		writeError(w, http.StatusBadRequest, "Instance must be running to run doctor")
+		return
+	}
+
+	doctorArgs := []string{"doctor", "--non-interactive"}
+	if body.Fix {
+		doctorArgs = append(doctorArgs, "--fix")
+	}
+	commandText := "openclaw " + strings.Join(doctorArgs, " ")
+	shellCommand := fmt.Sprintf(
+		"export HOME=/home/claworc XDG_CONFIG_HOME=/home/claworc/.config NO_COLOR=1 TERM=dumb COLUMNS=120; %s",
+		commandText,
+	)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	stdout, stderr, exitCode, err := orch.ExecInInstance(ctx, inst.Name, []string{"sh", "-lc", shellCommand})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("Doctor exec failed: %v", err))
+		return
+	}
+
+	combined := stdout
+	if stderr != "" {
+		if combined != "" && !strings.HasSuffix(combined, "\n") {
+			combined += "\n"
+		}
+		combined += stderr
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"command":         commandText,
+		"stdout":          stdout,
+		"stderr":          stderr,
+		"combined_output": combined,
+		"exit_code":       exitCode,
+		"fix_applied":     body.Fix,
 	})
 }
 

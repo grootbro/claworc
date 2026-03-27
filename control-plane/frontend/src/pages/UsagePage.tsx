@@ -17,6 +17,15 @@ function formatCost(v: number) {
   return `$${v.toFixed(2)}`;
 }
 
+function asNumber(value: unknown): number {
+  if (Array.isArray(value)) {
+    return asNumber(value[0]);
+  }
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number(value) || 0;
+  return 0;
+}
+
 function formatTokens(v: number) {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
@@ -69,11 +78,17 @@ export default function UsagePage() {
     return label.slice(5); // "MM-DD"
   }
 
-  function formatTimeTooltip(label: string): string {
-    if (granularity === "minute") return label.replace("T", " ") + ":00";
-    if (granularity === "hour") return label.replace("T", " ") + ":00";
-    return `Date: ${label}`;
-  }
+function formatTimeTooltip(label: string): string {
+  if (granularity === "minute") return label.replace("T", " ") + ":00";
+  if (granularity === "hour") return label.replace("T", " ") + ":00";
+  return `Date: ${label}`;
+}
+
+  const formatCostAxis = (value: unknown) => formatCost(asNumber(value));
+  const formatTooltipValue = (value: unknown, label: string) => [asNumber(value).toLocaleString(), label] as [string, string];
+  const formatCostTooltipValue = (value: unknown) => [formatCost(asNumber(value)), "Cost"] as [string, string];
+  const formatTokenTooltipValue = (value: unknown) => [formatTokens(asNumber(value)), ""] as [string, string];
+  const formatTooltipLabel = (label: unknown) => formatTimeTooltip(String(label ?? ""));
 
   const total = stats?.total;
   const timeSeries = stats?.time_series ?? [];
@@ -207,8 +222,8 @@ export default function UsagePage() {
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={formatTimeLabel} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip
-                    formatter={(v: number) => [v.toLocaleString(), "Requests"]}
-                    labelFormatter={formatTimeTooltip}
+                    formatter={(value) => formatTooltipValue(value, "Requests")}
+                    labelFormatter={formatTooltipLabel}
                   />
                   <Area
                     type="monotone"
@@ -234,10 +249,10 @@ export default function UsagePage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={formatTimeLabel} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v.toFixed(2)}`} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={formatCostAxis} />
                   <Tooltip
-                    formatter={(v: number) => [formatCost(v), "Cost"]}
-                    labelFormatter={formatTimeTooltip}
+                    formatter={formatCostTooltipValue}
+                    labelFormatter={formatTooltipLabel}
                   />
                   <Area
                     type="monotone"
@@ -259,14 +274,14 @@ export default function UsagePage() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={byInstance} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v.toFixed(2)}`} />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={formatCostAxis} />
                     <YAxis
                       type="category"
                       dataKey="_label"
                       tick={{ fontSize: 11 }}
                       width={90}
                     />
-                    <Tooltip formatter={(v: number) => [formatCost(v), "Cost"]} />
+                    <Tooltip formatter={formatCostTooltipValue} />
                     <Bar dataKey="cost_usd" fill="#6366f1" name="Cost (USD)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -282,14 +297,14 @@ export default function UsagePage() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={byProvider} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v.toFixed(2)}`} />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={formatCostAxis} />
                     <YAxis
                       type="category"
                       dataKey="provider_name"
                       tick={{ fontSize: 11 }}
                       width={90}
                     />
-                    <Tooltip formatter={(v: number) => [formatCost(v), "Cost"]} />
+                    <Tooltip formatter={formatCostTooltipValue} />
                     <Bar dataKey="cost_usd" fill="#f59e0b" name="Cost (USD)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -314,7 +329,7 @@ export default function UsagePage() {
                       tick={{ fontSize: 10 }}
                       width={160}
                     />
-                    <Tooltip formatter={(v: number) => [formatTokens(v), ""]} />
+                    <Tooltip formatter={formatTokenTooltipValue} />
                     <Legend />
                     <Bar dataKey="input_tokens" stackId="a" fill="#3b82f6" name="Input tokens" />
                     <Bar dataKey="output_tokens" stackId="a" fill="#818cf8" name="Output tokens" radius={[0, 4, 4, 0]} />

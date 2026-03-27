@@ -225,6 +225,7 @@ func main() {
 			r.Post("/instances/{id}/start", handlers.StartInstance)
 			r.Post("/instances/{id}/stop", handlers.StopInstance)
 			r.Post("/instances/{id}/restart", handlers.RestartInstance)
+			r.Post("/instances/{id}/doctor", handlers.RunInstanceDoctor)
 			r.Get("/instances/{id}/config", handlers.GetInstanceConfig)
 			r.Put("/instances/{id}/config", handlers.UpdateInstanceConfig)
 			r.Get("/instances/{id}/logs", handlers.StreamLogs)

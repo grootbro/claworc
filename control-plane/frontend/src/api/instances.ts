@@ -7,6 +7,7 @@ import type {
   InstanceConfig,
   InstanceConfigUpdate,
   InstanceStats,
+  InstanceDoctorResult,
 } from "@/types/instance";
 
 export async function fetchInstances(): Promise<Instance[]> {
@@ -105,4 +106,15 @@ export async function fetchInstanceStats(
 
 export async function updateInstanceImage(id: number): Promise<void> {
   await client.post(`/instances/${id}/update-image`);
+}
+
+export async function runInstanceDoctor(
+  id: number,
+  fix: boolean = false,
+): Promise<InstanceDoctorResult> {
+  const { data } = await client.post<InstanceDoctorResult>(
+    `/instances/${id}/doctor`,
+    { fix },
+  );
+  return data;
 }

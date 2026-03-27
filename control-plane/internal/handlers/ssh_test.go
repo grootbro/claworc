@@ -159,6 +159,12 @@ type mockOrchestrator struct {
 
 	configureErr error
 	addressErr   error
+	execStdout   string
+	execStderr   string
+	execCode     int
+	execErr      error
+	lastExecName string
+	lastExecCmd  []string
 }
 
 func (m *mockOrchestrator) Initialize(_ context.Context) error { return nil }
@@ -197,8 +203,10 @@ func (m *mockOrchestrator) GetContainerStats(_ context.Context, _ string) (*orch
 func (m *mockOrchestrator) UpdateImage(_ context.Context, _ string, _ orchestrator.CreateParams) error {
 	return nil
 }
-func (m *mockOrchestrator) ExecInInstance(_ context.Context, _ string, _ []string) (string, string, int, error) {
-	return "", "", 0, nil
+func (m *mockOrchestrator) ExecInInstance(_ context.Context, name string, cmd []string) (string, string, int, error) {
+	m.lastExecName = name
+	m.lastExecCmd = append([]string(nil), cmd...)
+	return m.execStdout, m.execStderr, m.execCode, m.execErr
 }
 
 // --- test helpers ---

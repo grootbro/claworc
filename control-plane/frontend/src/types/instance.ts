@@ -84,6 +84,15 @@ export interface InstanceStats {
   memory_limit_bytes: number;
 }
 
+export interface InstanceDoctorResult {
+  command: string;
+  stdout: string;
+  stderr: string;
+  combined_output: string;
+  exit_code: number;
+  fix_applied: boolean;
+}
+
 export interface ProviderModelCost {
   input: number;
   output: number;
