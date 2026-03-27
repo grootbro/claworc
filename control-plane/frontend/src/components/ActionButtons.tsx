@@ -47,11 +47,9 @@ export default function ActionButtons({
     Boolean(instance.control_url) &&
     Boolean(instance.gateway_token);
 
-  const gatewayProtocol = window.location.protocol === "https:" ? "wss" : "ws";
   const controlBasePath = instance.control_url || `/openclaw/${instance.id}/`;
   const normalizedControlBasePath = controlBasePath.endsWith("/") ? controlBasePath.slice(0, -1) : controlBasePath;
-  const gatewayUrl = `${gatewayProtocol}://${window.location.host}${normalizedControlBasePath}`;
-  const controlUrl = `${normalizedControlBasePath}/chat?session=browser#gatewayUrl=${encodeURIComponent(gatewayUrl)}&token=${encodeURIComponent(instance.gateway_token)}`;
+  const controlUrl = `${normalizedControlBasePath}/chat?session=browser#token=${encodeURIComponent(instance.gateway_token)}`;
 
   const disabledLinkClass = "pointer-events-none opacity-30";
 
