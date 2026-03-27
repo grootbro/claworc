@@ -5,6 +5,7 @@ export interface UserListItem {
   username: string;
   role: string;
   can_create_instances: boolean;
+  can_launch_control_ui: boolean;
   max_instances: number;
   created_at: string;
 }
@@ -19,6 +20,7 @@ export async function createUser(data: {
   password: string;
   role: string;
   can_create_instances: boolean;
+  can_launch_control_ui: boolean;
   max_instances: number;
 }): Promise<void> {
   await client.post("/users", data);
@@ -37,7 +39,7 @@ export async function updateUserRole(
 
 export async function updateUserLimits(
   id: number,
-  data: { can_create_instances: boolean; max_instances: number },
+  data: { can_create_instances: boolean; can_launch_control_ui: boolean; max_instances: number },
 ): Promise<void> {
   await client.put(`/users/${id}/limits`, data);
 }

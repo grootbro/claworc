@@ -42,26 +42,34 @@ export default function ActionButtons({
   const isOwner = instance.owner_user_id != null && instance.owner_user_id === user?.id;
   const canManageOwnership = isAdmin || isOwner;
   const canClone = isAdmin || (isOwner && Boolean(user?.can_create_instances));
+  const canLaunchControlUI =
+    (isAdmin || Boolean(user?.can_launch_control_ui)) &&
+    Boolean(instance.control_url) &&
+    Boolean(instance.gateway_token);
 
   const gatewayProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const gatewayUrl = `${gatewayProtocol}://${window.location.host}/openclaw/${instance.id}`;
-  const controlUrl = `/openclaw/${instance.id}/chat?session=browser#gatewayUrl=${encodeURIComponent(gatewayUrl)}&token=${encodeURIComponent(instance.gateway_token)}`;
+  const controlBasePath = instance.control_url || `/openclaw/${instance.id}/`;
+  const normalizedControlBasePath = controlBasePath.endsWith("/") ? controlBasePath.slice(0, -1) : controlBasePath;
+  const gatewayUrl = `${gatewayProtocol}://${window.location.host}${normalizedControlBasePath}`;
+  const controlUrl = `${normalizedControlBasePath}/chat?session=browser#gatewayUrl=${encodeURIComponent(gatewayUrl)}&token=${encodeURIComponent(instance.gateway_token)}`;
 
   const disabledLinkClass = "pointer-events-none opacity-30";
 
   return (
     <>
       <div className="flex items-center gap-1">
-        <a
-          href={controlUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Control UI"
-          aria-disabled={isUnavailable}
-          className={`p-1.5 text-gray-500 hover:text-teal-600 hover:bg-teal-50 rounded ${isUnavailable ? disabledLinkClass : ""}`}
-        >
-          <img src="/openclaw.svg" alt="Control UI" width={16} height={16} />
-        </a>
+        {canLaunchControlUI ? (
+          <a
+            href={controlUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Control UI"
+            aria-disabled={isUnavailable}
+            className={`p-1.5 text-gray-500 hover:text-teal-600 hover:bg-teal-50 rounded ${isUnavailable ? disabledLinkClass : ""}`}
+          >
+            <img src="/openclaw.svg" alt="Control UI" width={16} height={16} />
+          </a>
+        ) : null}
         <a
           href={`/instances/${instance.id}#chrome`}
           title="Browser"

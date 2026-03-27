@@ -135,6 +135,7 @@ type User struct {
 	PasswordHash       string    `gorm:"not null" json:"-"`
 	Role               string    `gorm:"not null;default:user" json:"role"`
 	CanCreateInstances bool      `gorm:"not null;default:false" json:"can_create_instances"`
+	CanLaunchControlUI bool      `gorm:"not null;default:false" json:"can_launch_control_ui"`
 	MaxInstances       int       `gorm:"not null;default:0" json:"max_instances"`
 	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt          time.Time `gorm:"autoUpdateTime" json:"updated_at"`

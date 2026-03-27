@@ -3,6 +3,7 @@ export interface User {
   username: string;
   role: "admin" | "user";
   can_create_instances: boolean;
+  can_launch_control_ui: boolean;
   max_instances: number;
 }
 

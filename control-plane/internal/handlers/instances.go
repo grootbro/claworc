@@ -319,6 +319,19 @@ func instanceToResponse(inst database.Instance, status string) instanceResponse 
 	}
 }
 
+func sanitizeInstanceResponseForUser(resp *instanceResponse, user *database.User) {
+	if user == nil {
+		resp.ControlURL = ""
+		resp.GatewayToken = ""
+		return
+	}
+	if user.Role == "admin" || user.CanLaunchControlUI {
+		return
+	}
+	resp.ControlURL = ""
+	resp.GatewayToken = ""
+}
+
 func resolveStatus(inst *database.Instance, orchStatus string) string {
 	if inst.Status == "stopping" {
 		if orchStatus == "stopped" {
@@ -436,7 +449,9 @@ func ListInstances(w http.ResponseWriter, r *http.Request) {
 			orchStatus = s
 		}
 		status := resolveStatus(&instances[i], orchStatus)
-		responses = append(responses, instanceToResponse(instances[i], status))
+		resp := instanceToResponse(instances[i], status)
+		sanitizeInstanceResponseForUser(&resp, user)
+		responses = append(responses, resp)
 	}
 
 	writeJSON(w, http.StatusOK, responses)
@@ -722,7 +737,9 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		ConfigureInstance(ctx, orch, sshproxy.NewSSHInstance(sshClient), name, models, gatewayProviders, config.Cfg.LLMGatewayPort)
 	}()
 
-	writeJSON(w, http.StatusCreated, instanceToResponse(inst, "creating"))
+	resp := instanceToResponse(inst, "creating")
+	sanitizeInstanceResponseForUser(&resp, user)
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func GetInstance(w http.ResponseWriter, r *http.Request) {
@@ -750,6 +767,7 @@ func GetInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	status := resolveStatus(&inst, orchStatus)
 	resp := instanceToResponse(inst, status)
+	sanitizeInstanceResponseForUser(&resp, middleware.GetUser(r))
 	if orch != nil {
 		if info, err := orch.GetInstanceImageInfo(r.Context(), inst.Name); err == nil && info != "" {
 			resp.LiveImageInfo = &info
@@ -1054,6 +1072,7 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 
 	status := resolveStatus(&inst, orchStatus)
 	resp := instanceToResponse(inst, status)
+	sanitizeInstanceResponseForUser(&resp, middleware.GetUser(r))
 	if orch != nil {
 		if info, err := orch.GetInstanceImageInfo(r.Context(), inst.Name); err == nil && info != "" {
 			resp.LiveImageInfo = &info
@@ -1739,7 +1758,9 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 		ConfigureInstance(ctx, orch, sshproxy.NewSSHInstance(sshClient), cloneName, models, nil, config.Cfg.LLMGatewayPort)
 	}()
 
-	writeJSON(w, http.StatusCreated, instanceToResponse(inst, "creating"))
+	resp := instanceToResponse(inst, "creating")
+	sanitizeInstanceResponseForUser(&resp, middleware.GetUser(r))
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func ReorderInstances(w http.ResponseWriter, r *http.Request) {

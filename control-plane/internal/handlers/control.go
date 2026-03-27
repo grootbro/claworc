@@ -61,7 +61,7 @@ func ControlProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !middleware.CanAccessInstance(r, uint(id)) {
+	if !middleware.CanLaunchControlUI(r, uint(id)) {
 		writeError(w, http.StatusForbidden, "Access denied")
 		return
 	}

@@ -89,3 +89,17 @@ func CanAccessInstance(r *http.Request, instanceID uint) bool {
 	}
 	return database.IsUserAssignedToInstance(user.ID, instanceID) || database.IsUserOwnerOfInstance(user.ID, instanceID)
 }
+
+func CanLaunchControlUI(r *http.Request, instanceID uint) bool {
+	user := GetUser(r)
+	if user == nil {
+		return false
+	}
+	if user.Role == "admin" {
+		return true
+	}
+	if !user.CanLaunchControlUI {
+		return false
+	}
+	return CanAccessInstance(r, instanceID)
+}

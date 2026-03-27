@@ -68,11 +68,12 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	setSessionCookie(w, r, sessionID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":                   user.ID,
-		"username":             user.Username,
-		"role":                 user.Role,
-		"can_create_instances": user.CanCreateInstances,
-		"max_instances":        user.MaxInstances,
+		"id":                    user.ID,
+		"username":              user.Username,
+		"role":                  user.Role,
+		"can_create_instances":  user.CanCreateInstances,
+		"can_launch_control_ui": user.CanLaunchControlUI,
+		"max_instances":         user.MaxInstances,
 	})
 }
 
@@ -92,11 +93,12 @@ func GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":                   user.ID,
-		"username":             user.Username,
-		"role":                 user.Role,
-		"can_create_instances": user.CanCreateInstances,
-		"max_instances":        user.MaxInstances,
+		"id":                    user.ID,
+		"username":              user.Username,
+		"role":                  user.Role,
+		"can_create_instances":  user.CanCreateInstances,
+		"can_launch_control_ui": user.CanLaunchControlUI,
+		"max_instances":         user.MaxInstances,
 	})
 }
 
@@ -141,9 +143,11 @@ func SetupCreateAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := &database.User{
-		Username:     body.Username,
-		PasswordHash: hash,
-		Role:         "admin",
+		Username:           body.Username,
+		PasswordHash:       hash,
+		Role:               "admin",
+		CanCreateInstances: true,
+		CanLaunchControlUI: true,
 	}
 	if err := database.CreateUser(user); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to create admin user")
@@ -158,11 +162,12 @@ func SetupCreateAdmin(w http.ResponseWriter, r *http.Request) {
 
 	setSessionCookie(w, r, sessionID)
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":                   user.ID,
-		"username":             user.Username,
-		"role":                 user.Role,
-		"can_create_instances": user.CanCreateInstances,
-		"max_instances":        user.MaxInstances,
+		"id":                    user.ID,
+		"username":              user.Username,
+		"role":                  user.Role,
+		"can_create_instances":  user.CanCreateInstances,
+		"can_launch_control_ui": user.CanLaunchControlUI,
+		"max_instances":         user.MaxInstances,
 	})
 }
 
@@ -344,11 +349,12 @@ func WebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
 
 	setSessionCookie(w, r, sessionID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":                   user.ID,
-		"username":             user.Username,
-		"role":                 user.Role,
-		"can_create_instances": user.CanCreateInstances,
-		"max_instances":        user.MaxInstances,
+		"id":                    user.ID,
+		"username":              user.Username,
+		"role":                  user.Role,
+		"can_create_instances":  user.CanCreateInstances,
+		"can_launch_control_ui": user.CanLaunchControlUI,
+		"max_instances":         user.MaxInstances,
 	})
 }
 

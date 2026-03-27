@@ -23,6 +23,7 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 		Username           string `json:"username"`
 		Role               string `json:"role"`
 		CanCreateInstances bool   `json:"can_create_instances"`
+		CanLaunchControlUI bool   `json:"can_launch_control_ui"`
 		MaxInstances       int    `json:"max_instances"`
 		CreatedAt          string `json:"created_at"`
 	}
@@ -33,6 +34,7 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 			Username:           u.Username,
 			Role:               u.Role,
 			CanCreateInstances: u.CanCreateInstances,
+			CanLaunchControlUI: u.CanLaunchControlUI,
 			MaxInstances:       u.MaxInstances,
 			CreatedAt:          formatTimestamp(u.CreatedAt),
 		})
@@ -47,6 +49,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		Password           string `json:"password"`
 		Role               string `json:"role"`
 		CanCreateInstances bool   `json:"can_create_instances"`
+		CanLaunchControlUI bool   `json:"can_launch_control_ui"`
 		MaxInstances       int    `json:"max_instances"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -82,6 +85,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		PasswordHash:       hash,
 		Role:               body.Role,
 		CanCreateInstances: body.CanCreateInstances,
+		CanLaunchControlUI: body.CanLaunchControlUI,
 		MaxInstances:       body.MaxInstances,
 	}
 	if err := database.CreateUser(user); err != nil {
@@ -90,11 +94,12 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":                   user.ID,
-		"username":             user.Username,
-		"role":                 user.Role,
-		"can_create_instances": user.CanCreateInstances,
-		"max_instances":        user.MaxInstances,
+		"id":                    user.ID,
+		"username":              user.Username,
+		"role":                  user.Role,
+		"can_create_instances":  user.CanCreateInstances,
+		"can_launch_control_ui": user.CanLaunchControlUI,
+		"max_instances":         user.MaxInstances,
 	})
 }
 
@@ -241,6 +246,7 @@ func UpdateUserLimits(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		CanCreateInstances bool `json:"can_create_instances"`
+		CanLaunchControlUI bool `json:"can_launch_control_ui"`
 		MaxInstances       int  `json:"max_instances"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -253,8 +259,9 @@ func UpdateUserLimits(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := database.DB.Model(&database.User{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"can_create_instances": body.CanCreateInstances,
-		"max_instances":        body.MaxInstances,
+		"can_create_instances":  body.CanCreateInstances,
+		"can_launch_control_ui": body.CanLaunchControlUI,
+		"max_instances":         body.MaxInstances,
 	}).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to update user limits")
 		return
