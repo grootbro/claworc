@@ -977,6 +977,7 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	nextModels = normalizeModelsConfig(nextModels, nextDefaultModel)
 	effectiveModels := computeEffectiveModels(nextModels)
+	normalizedProviders := parseEnabledProviders(inst.EnabledProviders)
 
 	// Update default model
 	if body.DefaultModel != nil {
@@ -1023,7 +1024,13 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "Only admins can configure LLM gateway providers")
 			return
 		}
-		normalizedProviders := normalizeEnabledProviders(*body.EnabledProviders, effectiveModels)
+		normalizedProviders = *body.EnabledProviders
+	}
+
+	// Keep provider enablement in sync with the effective model set even when the
+	// client only updates models/defaultModel and omits enabled_providers.
+	if body.Models != nil || body.DefaultModel != nil || body.EnabledProviders != nil {
+		normalizedProviders = normalizeEnabledProviders(normalizedProviders, effectiveModels)
 		b, _ := json.Marshal(normalizedProviders)
 		database.DB.Model(&inst).Update("enabled_providers", string(b))
 		if err := llmgateway.EnsureKeysForInstance(inst.ID, normalizedProviders); err != nil {
