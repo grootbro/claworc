@@ -22,10 +22,11 @@ RUN apt-get update && \
       fonts-noto-color-emoji fonts-noto-cjk fonts-dejavu-core fonts-freefont-ttf \
       tzdata locales \
       openssh-server git python3 python3-pip python3-venv python3-numpy \
-      build-essential procps cron nodejs && \
+      build-essential procps cron jq ripgrep nodejs && \
     echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen && \
-    su - claworc -s /bin/bash -c "export PATH=/usr/local/bin:/usr/bin:/bin:\$PATH npm_config_script_shell=/bin/bash; npm install -g '${OPENCLAW_PACKAGE_SPEC}' --prefix /home/claworc/.npm-global --no-fund --no-audit --loglevel=error" && \
+    su - claworc -s /bin/bash -c "export PATH=/usr/local/bin:/usr/bin:/bin:\$PATH npm_config_script_shell=/bin/bash; npm install -g '${OPENCLAW_PACKAGE_SPEC}' 'clawhub@latest' --prefix /home/claworc/.npm-global --no-fund --no-audit --loglevel=error" && \
     ln -sf /home/claworc/.npm-global/bin/openclaw /usr/local/bin/openclaw && \
+    ln -sf /home/claworc/.npm-global/bin/clawhub /usr/local/bin/clawhub && \
     curl -sSL https://install.python-poetry.org | POETRY_HOME=/usr/local python3 - && \
     rm -rf /var/lib/apt/lists/*
 
