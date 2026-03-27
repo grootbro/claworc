@@ -120,14 +120,32 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h1 data-testid="login-title" className="text-xl font-semibold text-gray-900 text-center mb-1">
-            {setupMode ? "Create Admin Account" : "Sign In"}
-          </h1>
-          <p className="text-sm text-gray-500 text-center mb-6">
-            {setupMode
-              ? "Set up your first admin account to get started"
-              : branding.productTagline}
-          </p>
+          <div className="mb-6">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <img src="/favicon.svg" alt={branding.productName} className="h-11 w-11" />
+              </div>
+              <div className="h-10 w-px bg-gray-200" />
+              <div className="h-14 w-14 rounded-2xl border border-amber-200 bg-amber-50 p-0.5 shadow-sm overflow-hidden">
+                <img
+                  src="/ravefoxlab.jpg"
+                  alt={`${branding.productName} lab`}
+                  className="h-full w-full rounded-[14px] object-cover"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-400 text-center mb-2">
+              {branding.productShortName}
+            </p>
+            <h1 data-testid="login-title" className="text-xl font-semibold text-gray-900 text-center mb-1">
+              {setupMode ? "Create Admin Account" : "Sign In"}
+            </h1>
+            <p className="text-sm text-gray-500 text-center">
+              {setupMode
+                ? "Set up your first admin account to get started"
+                : branding.productTagline}
+            </p>
+          </div>
 
           {error && (
             <div data-testid="login-error" className="mb-4 p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
