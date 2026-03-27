@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +27,7 @@ import (
 // Provider catalog proxy (claworc.com/providers API, 1-hour in-process cache)
 // ---------------------------------------------------------------------------
 
-const catalogBaseURL = "https://claworc.com/providers"
+var catalogBaseURL = "https://claworc.com/providers"
 
 type catalogCacheEntry struct {
 	body      []byte
@@ -40,6 +41,23 @@ var (
 )
 
 func proxyCatalog(w http.ResponseWriter, path string) {
+	if path == "/" {
+		entries, err := ensureRootCatalog()
+		if err != nil {
+			log.Printf("catalog proxy: fetch %s: %v", utils.SanitizeForLog(path), err)
+			http.Error(w, `{"error":"catalog unavailable"}`, http.StatusBadGateway)
+			return
+		}
+		body, err := json.Marshal(entries)
+		if err != nil {
+			http.Error(w, `{"error":"catalog encode error"}`, http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(body)
+		return
+	}
+
 	catalogCacheMu.RLock()
 	entry := catalogCache[path]
 	catalogCacheMu.RUnlock()
@@ -154,6 +172,75 @@ type catalogRootEntry struct {
 	Models    []catalogRootModel `json:"models"`
 }
 
+func intPtr(v int) *int {
+	return &v
+}
+
+func localCatalogOverrides() []catalogRootEntry {
+	return []catalogRootEntry{
+		{
+			Name:      "gemini",
+			Label:     "Gemini",
+			IconKey:   "gemini",
+			APIFormat: "google-generative-ai",
+			BaseURL:   "https://generativelanguage.googleapis.com/v1beta",
+			Models: []catalogRootModel{
+				{
+					ModelID:        "gemini-3-flash-preview",
+					ModelName:      "Gemini 3 Flash Preview",
+					Reasoning:      true,
+					Vision:         true,
+					ContextWindow:  intPtr(1048576),
+					MaxTokens:      intPtr(65536),
+					InputCost:      0.50,
+					OutputCost:     3.00,
+					CachedReadCost: 0.05,
+				},
+				{
+					ModelID:        "gemini-2.5-flash",
+					ModelName:      "Gemini 2.5 Flash",
+					Reasoning:      true,
+					Vision:         true,
+					ContextWindow:  intPtr(1048576),
+					MaxTokens:      intPtr(65536),
+					InputCost:      0.30,
+					OutputCost:     2.50,
+					CachedReadCost: 0.03,
+				},
+			},
+		},
+	}
+}
+
+func mergeCatalogEntries(remote []catalogRootEntry) []catalogRootEntry {
+	byKey := make(map[string]catalogRootEntry, len(remote)+len(localCatalogOverrides()))
+	for _, entry := range remote {
+		entry.Name = strings.ToLower(strings.TrimSpace(entry.Name))
+		if entry.Name == "" {
+			continue
+		}
+		byKey[entry.Name] = entry
+	}
+	for _, entry := range localCatalogOverrides() {
+		entry.Name = strings.ToLower(strings.TrimSpace(entry.Name))
+		if entry.Name == "" {
+			continue
+		}
+		// Local overrides win so the fork can fix or extend upstream catalog data.
+		byKey[entry.Name] = entry
+	}
+	keys := make([]string, 0, len(byKey))
+	for key := range byKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	merged := make([]catalogRootEntry, 0, len(keys))
+	for _, key := range keys {
+		merged = append(merged, byKey[key])
+	}
+	return merged
+}
+
 // catalogModelToProviderModel converts a catalogRootModel to a database.ProviderModel.
 func catalogModelToProviderModel(m catalogRootModel) database.ProviderModel {
 	pm := database.ProviderModel{
@@ -183,7 +270,18 @@ func getCatalogRoot() ([]catalogRootEntry, error) {
 
 	resp, err := catalogHTTPClient.Get(catalogBaseURL + "/")
 	if err != nil {
-		return nil, err
+		entries := mergeCatalogEntries(nil)
+		if len(entries) == 0 {
+			return nil, err
+		}
+		body, marshalErr := json.Marshal(entries)
+		if marshalErr == nil {
+			catalogCacheMu.Lock()
+			catalogCache["/"] = &catalogCacheEntry{body: body, expiresAt: time.Now().Add(time.Hour)}
+			catalogCacheMu.Unlock()
+		}
+		log.Printf("catalog root fetch failed, using local overrides only: %v", err)
+		return entries, nil
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -191,17 +289,45 @@ func getCatalogRoot() ([]catalogRootEntry, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("catalog returned status %d", resp.StatusCode)
+		entries := mergeCatalogEntries(nil)
+		if len(entries) == 0 {
+			return nil, fmt.Errorf("catalog returned status %d", resp.StatusCode)
+		}
+		body, marshalErr := json.Marshal(entries)
+		if marshalErr == nil {
+			catalogCacheMu.Lock()
+			catalogCache["/"] = &catalogCacheEntry{body: body, expiresAt: time.Now().Add(time.Hour)}
+			catalogCacheMu.Unlock()
+		}
+		log.Printf("catalog root returned %d, using local overrides only", resp.StatusCode)
+		return entries, nil
+	}
+
+	var remoteEntries []catalogRootEntry
+	if err := json.Unmarshal(body, &remoteEntries); err != nil {
+		entries := mergeCatalogEntries(nil)
+		if len(entries) == 0 {
+			return nil, err
+		}
+		body, marshalErr := json.Marshal(entries)
+		if marshalErr == nil {
+			catalogCacheMu.Lock()
+			catalogCache["/"] = &catalogCacheEntry{body: body, expiresAt: time.Now().Add(time.Hour)}
+			catalogCacheMu.Unlock()
+		}
+		log.Printf("catalog root decode failed, using local overrides only: %v", err)
+		return entries, nil
+	}
+
+	entries := mergeCatalogEntries(remoteEntries)
+	body, err = json.Marshal(entries)
+	if err != nil {
+		return nil, err
 	}
 	entry := &catalogCacheEntry{body: body, expiresAt: time.Now().Add(time.Hour)}
 	catalogCacheMu.Lock()
 	catalogCache["/"] = entry
 	catalogCacheMu.Unlock()
-
-	var entries []catalogRootEntry
-	if err := json.Unmarshal(body, &entries); err != nil {
-		return nil, err
-	}
 	return entries, nil
 }
 
@@ -223,6 +349,43 @@ var getCatalogModels = func(catalogKey string) []database.ProviderModel {
 		result[i] = catalogModelToProviderModel(m)
 	}
 	return result
+}
+
+func catalogByName(entries []catalogRootEntry) map[string]catalogRootEntry {
+	result := make(map[string]catalogRootEntry, len(entries))
+	for _, entry := range entries {
+		key := strings.ToLower(strings.TrimSpace(entry.Name))
+		if key == "" {
+			continue
+		}
+		result[key] = entry
+	}
+	return result
+}
+
+func normalizeCatalogComparable(raw string) string {
+	return strings.TrimRight(strings.ToLower(strings.TrimSpace(raw)), "/")
+}
+
+func matchingCatalogKey(p database.LLMProvider, catalog map[string]catalogRootEntry) (string, bool) {
+	if key := strings.ToLower(strings.TrimSpace(p.Provider)); key != "" {
+		_, ok := catalog[key]
+		return key, ok
+	}
+
+	key := strings.ToLower(strings.TrimSpace(p.Key))
+	entry, ok := catalog[key]
+	if !ok {
+		return "", false
+	}
+
+	if normalizeCatalogComparable(p.Name) == normalizeCatalogComparable(entry.Label) ||
+		normalizeCatalogComparable(p.BaseURL) == normalizeCatalogComparable(entry.BaseURL) ||
+		normalizeCatalogComparable(p.APIType) == normalizeCatalogComparable(entry.APIFormat) {
+		return key, true
+	}
+
+	return "", false
 }
 
 var providerKeyRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]*[a-z0-9]$|^[a-z0-9]$`)
@@ -433,30 +596,35 @@ func SyncProviderModels(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Provider not found")
 		return
 	}
-	if p.Provider == "" {
+	catalogEntries, err := getCatalogRoot()
+	if err != nil {
+		log.Printf("SyncProviderModels: fetch catalog root: %v", err)
+		writeError(w, http.StatusBadGateway, "Failed to fetch catalog models")
+		return
+	}
+	catalog := catalogByName(catalogEntries)
+	catalogKey, ok := matchingCatalogKey(p, catalog)
+	if !ok {
 		writeError(w, http.StatusBadRequest, "Custom providers have no catalog to sync from")
 		return
 	}
 
-	// Force-refresh the root catalog cache
-	catalogCacheMu.Lock()
-	delete(catalogCache, "/")
-	catalogCacheMu.Unlock()
-
-	log.Printf("Syncing models for provider %d (%s)", p.ID, p.Provider)
-	models := getCatalogModels(p.Provider)
+	log.Printf("Syncing models for provider %d (%s)", p.ID, catalogKey)
+	models := getCatalogModels(catalogKey)
 	if models == nil {
-		log.Printf("Failed to fetch catalog models for provider %d (%s)", p.ID, p.Provider)
+		log.Printf("Failed to fetch catalog models for provider %d (%s)", p.ID, catalogKey)
 		writeError(w, http.StatusBadGateway, "Failed to fetch catalog models")
 		return
 	}
 
 	modelsJSON, _ := json.Marshal(models)
+	p.Provider = catalogKey
 	p.Models = string(modelsJSON)
 	if err := database.DB.Save(&p).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to update provider models")
 		return
 	}
+	pushProviderUpdateToInstances(p.ID)
 	log.Printf("Synced %d models for provider %d (%s)", len(models), p.ID, p.Provider)
 	writeJSON(w, http.StatusOK, toProviderResp(p))
 }
@@ -488,30 +656,28 @@ func SyncAllProviderModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	catalogByKey := make(map[string]catalogRootEntry, len(catalogEntries))
-	for _, e := range catalogEntries {
-		catalogByKey[e.Name] = e
-	}
+	catalogByKey := catalogByName(catalogEntries)
 
 	var providers []database.LLMProvider
 	database.DB.Order("id ASC").Find(&providers)
 
 	results := make([]syncProviderResult, 0, len(providers))
 	for _, p := range providers {
-		res := syncProviderResult{ID: p.ID, Key: p.Key, Catalog: p.Provider}
-		if p.Provider == "" {
-			res.Skipped = true
-			results = append(results, res)
-			continue
-		}
-		catEntry, found := catalogByKey[p.Provider]
+		catalogKey, found := matchingCatalogKey(p, catalogByKey)
+		res := syncProviderResult{ID: p.ID, Key: p.Key, Catalog: catalogKey}
 		if !found {
 			res.Skipped = true
 			results = append(results, res)
 			continue
 		}
+		catEntry := catalogByKey[catalogKey]
 
 		changes := map[string]syncProviderChange{}
+
+		if p.Provider != catalogKey {
+			changes["provider"] = syncProviderChange{Old: p.Provider, New: catalogKey}
+			p.Provider = catalogKey
+		}
 
 		if p.Name != catEntry.Label {
 			changes["name"] = syncProviderChange{Old: p.Name, New: catEntry.Label}
@@ -539,6 +705,7 @@ func SyncAllProviderModels(w http.ResponseWriter, r *http.Request) {
 
 		if len(changes) > 0 {
 			database.DB.Save(&p)
+			pushProviderUpdateToInstances(p.ID)
 			log.Printf("SyncAllProviderModels: updated provider %d (%s): %v", p.ID, p.Provider, changes)
 			res.Updated = true
 			res.Changes = changes
@@ -908,7 +1075,7 @@ func TestProviderKey(w http.ResponseWriter, r *http.Request) {
 
 	at := llmgateway.GetAPIType(body.APIType)
 	probePath := strings.TrimPrefix(at.ProbeURL(body.BaseURL), strings.TrimRight(body.BaseURL, "/"))
-  
+
 	statusCode, respBody, err := probeProviderURL(r.Context(), body.BaseURL, probePath, body.APIType, body.APIKey)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "error": "invalid URL or connection failed"})

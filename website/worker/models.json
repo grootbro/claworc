@@ -134,6 +134,43 @@
     ]
   },
   {
+    "name": "gemini",
+    "label": "Gemini",
+    "icon_key": "gemini",
+    "api_format": "google-generative-ai",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "models": [
+      {
+        "model_id": "gemini-3-flash-preview",
+        "model_name": "Gemini 3 Flash Preview",
+        "reasoning": true,
+        "vision": true,
+        "context_window": 1048576,
+        "max_tokens": 65536,
+        "input_cost": 0.5,
+        "output_cost": 3,
+        "cached_read_cost": 0.05,
+        "cached_write_cost": null,
+        "tag": null,
+        "description": null
+      },
+      {
+        "model_id": "gemini-2.5-flash",
+        "model_name": "Gemini 2.5 Flash",
+        "reasoning": true,
+        "vision": true,
+        "context_window": 1048576,
+        "max_tokens": 65536,
+        "input_cost": 0.3,
+        "output_cost": 2.5,
+        "cached_read_cost": 0.03,
+        "cached_write_cost": null,
+        "tag": null,
+        "description": null
+      }
+    ]
+  },
+  {
     "name": "glm",
     "label": "GLM Models",
     "icon_key": null,

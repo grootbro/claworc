@@ -6,6 +6,8 @@ anthropic,Anthropic,anthropic,anthropic-messages,https://api.anthropic.com/,clau
 openai,OpenAI,openai,openai-responses,https://api.openai.com/,gpt-5.2,GPT-5.2,TRUE,TRUE,400000,128000,1.75,14,0.175,
 openai,OpenAI,openai,openai-responses,https://api.openai.com/,gpt-5-mini,GPT-5 mini,TRUE,TRUE,400000,128000,0.25,2,0.025,
 openai,OpenAI,openai,openai-responses,https://api.openai.com/,gpt-5-nano,GPT-5 nano,TRUE,TRUE,400000,128000,0.05,0.4,0.005,
+gemini,Gemini,gemini,google-generative-ai,https://generativelanguage.googleapis.com/v1beta,gemini-3-flash-preview,Gemini 3 Flash Preview,TRUE,TRUE,1048576,65536,0.5,3,0.05,
+gemini,Gemini,gemini,google-generative-ai,https://generativelanguage.googleapis.com/v1beta,gemini-2.5-flash,Gemini 2.5 Flash,TRUE,TRUE,1048576,65536,0.3,2.5,0.03,
 cloudflare-ai-gateway,Cloudflare AI Gateway,,,https://gateway.ai.cloudflare.com/v1,cloudflare-ai-gateway/claude-sonnet-4-5,Claude Sonnet 4 5,TRUE,TRUE,,,,,,
 glm,GLM Models,,,,zai/glm-5,Glm 5,FALSE,FALSE,,,,,,
 glm,GLM Models,,,,glm-5,Glm 5,FALSE,FALSE,,,,,,
