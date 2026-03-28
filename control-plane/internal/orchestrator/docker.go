@@ -1155,11 +1155,12 @@ func (d *DockerOrchestrator) createContainer(ctx context.Context, params CreateP
 			"22/tcp": struct{}{},
 		},
 		Healthcheck: &container.HealthConfig{
-			Test:          []string{"CMD-SHELL", "bash -c '>/dev/tcp/127.0.0.1/22'"},
-			Interval:      30_000_000_000,
-			Timeout:       10_000_000_000,
+			Test:          []string{"CMD", "/usr/local/bin/claworc-healthcheck", "ready"},
+			Interval:      30 * time.Second,
+			Timeout:       10 * time.Second,
 			Retries:       3,
-			StartInterval: 60_000_000_000,
+			StartPeriod:   10 * time.Minute,
+			StartInterval: 30 * time.Second,
 		},
 	}
 

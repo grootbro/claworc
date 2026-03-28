@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -576,7 +575,7 @@ func buildDeployment(params CreateParams, ns string) *appsv1.Deployment {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": params.Name, "managed-by": "claworc"}},
 				Spec: corev1.PodSpec{
-					Hostname:   strings.TrimPrefix(params.Name, "bot-"),
+					Hostname: strings.TrimPrefix(params.Name, "bot-"),
 					Containers: []corev1.Container{{
 						Name:            "claworc-instance",
 						Image:           params.ContainerImage,
@@ -598,15 +597,23 @@ func buildDeployment(params CreateParams, ns string) *appsv1.Deployment {
 							{Name: "homebrew-data", MountPath: "/home/linuxbrew/.linuxbrew"},
 							{Name: "dshm", MountPath: "/dev/shm"},
 						},
+						StartupProbe: &corev1.Probe{
+							ProbeHandler:     corev1.ProbeHandler{Exec: &corev1.ExecAction{Command: []string{"/usr/local/bin/claworc-healthcheck", "startup"}}},
+							PeriodSeconds:    10,
+							TimeoutSeconds:   5,
+							FailureThreshold: 90,
+						},
 						LivenessProbe: &corev1.Probe{
-							ProbeHandler:        corev1.ProbeHandler{TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(22)}},
-							InitialDelaySeconds: 60,
-							PeriodSeconds:       30,
+							ProbeHandler:     corev1.ProbeHandler{Exec: &corev1.ExecAction{Command: []string{"/usr/local/bin/claworc-healthcheck", "live"}}},
+							PeriodSeconds:    30,
+							TimeoutSeconds:   5,
+							FailureThreshold: 3,
 						},
 						ReadinessProbe: &corev1.Probe{
-							ProbeHandler:        corev1.ProbeHandler{TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(22)}},
-							InitialDelaySeconds: 30,
-							PeriodSeconds:       10,
+							ProbeHandler:     corev1.ProbeHandler{Exec: &corev1.ExecAction{Command: []string{"/usr/local/bin/claworc-healthcheck", "ready"}}},
+							PeriodSeconds:    10,
+							TimeoutSeconds:   5,
+							FailureThreshold: 3,
 						},
 					}},
 					Volumes: []corev1.Volume{
