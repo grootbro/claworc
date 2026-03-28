@@ -12,7 +12,6 @@ import {
 import { branding } from "@/branding";
 import { startAuthentication } from "@simplewebauthn/browser";
 import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
-import ThemeToggle from "@/components/ThemeToggle";
 
 function getLoginError(error: unknown): string {
   if (isAxiosError(error)) {
@@ -119,9 +118,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="fixed right-4 top-4 z-30">
-        <ThemeToggle />
-      </div>
       <div className="w-full max-w-sm">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="mb-6">

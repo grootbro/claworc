@@ -12,6 +12,7 @@ import {
 import { useHealth } from "@/hooks/useHealth";
 import { useAuth } from "@/contexts/AuthContext";
 import { branding } from "@/branding";
+import ThemeToggle from "./ThemeToggle";
 
 export default function Sidebar() {
   const location = useLocation();
@@ -130,6 +131,10 @@ export default function Sidebar() {
             </Link>
           </>
         )}
+      </div>
+
+      <div className="px-3 mt-4 shrink-0 flex justify-center">
+        <ThemeToggle />
       </div>
 
       {/* Spacer */}

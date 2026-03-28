@@ -1,27 +1,21 @@
-import { LaptopMinimal, MoonStar, SunMedium } from "lucide-react";
+import { MoonStar, SunMedium } from "lucide-react";
 import { useTheme, type ThemeMode } from "@/contexts/ThemeContext";
 
 const options: Array<{
   mode: ThemeMode;
   label: string;
-  shortLabel: string;
   icon: typeof SunMedium;
 }> = [
-  { mode: "light", label: "Light", shortLabel: "Light", icon: SunMedium },
-  { mode: "dark", label: "Dark", shortLabel: "Dark", icon: MoonStar },
-  { mode: "system", label: "Auto", shortLabel: "Auto", icon: LaptopMinimal },
+  { mode: "light", label: "Light theme", icon: SunMedium },
+  { mode: "dark", label: "Dark theme", icon: MoonStar },
 ];
 
-export default function ThemeToggle({ compact = false }: { compact?: boolean }) {
+export default function ThemeToggle() {
   const { mode, setMode } = useTheme();
 
   return (
-    <div
-      className={`theme-toggle-shell ${compact ? "theme-toggle-shell--compact" : ""}`}
-      aria-label="Theme switcher"
-      role="group"
-    >
-      {options.map(({ mode: optionMode, label, shortLabel, icon: Icon }) => {
+    <div className="theme-toggle-shell" aria-label="Theme switcher" role="group">
+      {options.map(({ mode: optionMode, label, icon: Icon }) => {
         const active = mode === optionMode;
         return (
           <button
@@ -31,10 +25,10 @@ export default function ThemeToggle({ compact = false }: { compact?: boolean }) 
             className="theme-toggle-option"
             data-active={active}
             title={label}
+            aria-label={label}
             aria-pressed={active}
           >
-            <Icon size={15} className="shrink-0" />
-            <span>{compact ? shortLabel : label}</span>
+            <Icon size={16} className="shrink-0" />
           </button>
         );
       })}
