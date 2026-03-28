@@ -28,7 +28,7 @@ export default function ThemeToggle() {
             aria-label={label}
             aria-pressed={active}
           >
-            <Icon size={16} className="shrink-0" />
+            <Icon size={13} className="shrink-0" />
           </button>
         );
       })}

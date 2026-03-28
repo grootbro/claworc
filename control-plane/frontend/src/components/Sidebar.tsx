@@ -133,7 +133,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      <div className="px-3 mt-4 shrink-0 flex justify-center">
+      <div className="px-2 mt-4 shrink-0 flex justify-center">
         <ThemeToggle />
       </div>
 
