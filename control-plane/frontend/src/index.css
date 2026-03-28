@@ -1,5 +1,296 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: light;
+  --app-bg: #edf2f8;
+  --app-bg-accent: rgba(59, 130, 246, 0.12);
+  --app-bg-secondary: rgba(15, 23, 42, 0.06);
+  --app-surface: rgba(255, 255, 255, 0.92);
+  --app-surface-strong: #ffffff;
+  --app-surface-soft: rgba(248, 250, 252, 0.95);
+  --app-border: rgba(148, 163, 184, 0.28);
+  --app-border-strong: rgba(148, 163, 184, 0.4);
+  --app-text: #0f172a;
+  --app-text-soft: #475569;
+  --app-text-muted: #64748b;
+  --app-text-faint: #94a3b8;
+  --app-accent: #2563eb;
+  --app-accent-strong: #1d4ed8;
+  --app-accent-soft: rgba(37, 99, 235, 0.12);
+  --app-shadow: 0 24px 64px rgba(15, 23, 42, 0.08);
+  --theme-toggle-backdrop: rgba(255, 255, 255, 0.78);
+}
+
+:root.theme-dark {
+  color-scheme: dark;
+  --app-bg: #07111f;
+  --app-bg-accent: rgba(59, 130, 246, 0.18);
+  --app-bg-secondary: rgba(8, 47, 73, 0.32);
+  --app-surface: rgba(12, 23, 40, 0.88);
+  --app-surface-strong: #111d31;
+  --app-surface-soft: rgba(17, 29, 49, 0.96);
+  --app-border: rgba(96, 165, 250, 0.18);
+  --app-border-strong: rgba(96, 165, 250, 0.28);
+  --app-text: #e5eefc;
+  --app-text-soft: #c0d2ef;
+  --app-text-muted: #8da2c4;
+  --app-text-faint: #6e84a8;
+  --app-accent: #79a9ff;
+  --app-accent-strong: #a8c7ff;
+  --app-accent-soft: rgba(121, 169, 255, 0.14);
+  --app-shadow: 0 32px 80px rgba(2, 6, 23, 0.45);
+  --theme-toggle-backdrop: rgba(7, 17, 31, 0.7);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top right, var(--app-bg-accent), transparent 28rem),
+    radial-gradient(circle at bottom left, var(--app-bg-secondary), transparent 26rem),
+    var(--app-bg);
+  color: var(--app-text);
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+.theme-toggle-shell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--app-border);
+  background: var(--theme-toggle-backdrop);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--app-shadow);
+}
+
+.theme-toggle-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--app-text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.theme-toggle-option:hover {
+  color: var(--app-text);
+}
+
+.theme-toggle-option[data-active="true"] {
+  background: var(--app-surface-strong);
+  color: var(--app-text);
+  box-shadow: inset 0 0 0 1px var(--app-border);
+}
+
+.theme-toggle-option:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 640px) {
+  .theme-toggle-shell {
+    width: min(100%, calc(100vw - 2rem));
+    justify-content: space-between;
+  }
+
+  .theme-toggle-option {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+.theme-dark .bg-gray-50 {
+  background-color: transparent !important;
+}
+
+.theme-dark .bg-gray-100,
+.theme-dark .hover\:bg-gray-100:hover {
+  background-color: rgba(148, 163, 184, 0.12) !important;
+}
+
+.theme-dark .bg-white,
+.theme-dark .hover\:bg-white:hover {
+  background-color: var(--app-surface) !important;
+}
+
+.theme-dark .border-gray-100,
+.theme-dark .border-gray-200,
+.theme-dark .border-gray-300 {
+  border-color: var(--app-border) !important;
+}
+
+.theme-dark .text-gray-900,
+.theme-dark .hover\:text-gray-900:hover {
+  color: var(--app-text) !important;
+}
+
+.theme-dark .text-gray-800,
+.theme-dark .text-gray-700,
+.theme-dark .hover\:text-gray-800:hover,
+.theme-dark .hover\:text-gray-700:hover {
+  color: var(--app-text-soft) !important;
+}
+
+.theme-dark .text-gray-600,
+.theme-dark .text-gray-500,
+.theme-dark .hover\:text-gray-600:hover,
+.theme-dark .hover\:text-gray-500:hover {
+  color: var(--app-text-muted) !important;
+}
+
+.theme-dark .text-gray-400 {
+  color: var(--app-text-faint) !important;
+}
+
+.theme-dark .bg-blue-50,
+.theme-dark .hover\:bg-blue-50:hover {
+  background-color: rgba(59, 130, 246, 0.14) !important;
+}
+
+.theme-dark .text-blue-600,
+.theme-dark .text-blue-700,
+.theme-dark .hover\:text-blue-600:hover,
+.theme-dark .hover\:text-blue-700:hover,
+.theme-dark .hover\:text-blue-800:hover {
+  color: #89b4ff !important;
+}
+
+.theme-dark .bg-blue-600 {
+  background-color: #2f74ff !important;
+}
+
+.theme-dark .hover\:bg-blue-700:hover {
+  background-color: #1f61e2 !important;
+}
+
+.theme-dark .border-blue-200 {
+  border-color: rgba(96, 165, 250, 0.28) !important;
+}
+
+.theme-dark .bg-green-50,
+.theme-dark .hover\:bg-green-50:hover,
+.theme-dark .bg-green-100 {
+  background-color: rgba(34, 197, 94, 0.16) !important;
+}
+
+.theme-dark .text-green-600,
+.theme-dark .text-green-700,
+.theme-dark .text-green-800,
+.theme-dark .hover\:text-green-600:hover {
+  color: #83e6a6 !important;
+}
+
+.theme-dark .bg-yellow-50,
+.theme-dark .hover\:bg-yellow-50:hover,
+.theme-dark .bg-yellow-100 {
+  background-color: rgba(250, 204, 21, 0.16) !important;
+}
+
+.theme-dark .text-yellow-600,
+.theme-dark .text-yellow-700,
+.theme-dark .text-yellow-800,
+.theme-dark .hover\:text-yellow-600:hover {
+  color: #f8da7a !important;
+}
+
+.theme-dark .bg-orange-50,
+.theme-dark .hover\:bg-orange-50:hover,
+.theme-dark .bg-orange-100 {
+  background-color: rgba(251, 146, 60, 0.16) !important;
+}
+
+.theme-dark .text-orange-600,
+.theme-dark .text-orange-700,
+.theme-dark .text-orange-800,
+.theme-dark .hover\:text-orange-600:hover {
+  color: #ffc27a !important;
+}
+
+.theme-dark .bg-red-50,
+.theme-dark .hover\:bg-red-50:hover,
+.theme-dark .bg-red-100 {
+  background-color: rgba(248, 113, 113, 0.14) !important;
+}
+
+.theme-dark .text-red-600,
+.theme-dark .text-red-700,
+.theme-dark .text-red-800,
+.theme-dark .hover\:text-red-600:hover {
+  color: #ff9f9f !important;
+}
+
+.theme-dark .border-red-200 {
+  border-color: rgba(248, 113, 113, 0.24) !important;
+}
+
+.theme-dark .bg-purple-50,
+.theme-dark .hover\:bg-purple-50:hover {
+  background-color: rgba(168, 85, 247, 0.14) !important;
+}
+
+.theme-dark .text-purple-600,
+.theme-dark .hover\:text-purple-600:hover {
+  color: #d0a3ff !important;
+}
+
+.theme-dark .bg-indigo-50,
+.theme-dark .hover\:bg-indigo-50:hover {
+  background-color: rgba(99, 102, 241, 0.14) !important;
+}
+
+.theme-dark .text-indigo-600,
+.theme-dark .hover\:text-indigo-600:hover {
+  color: #b4bdff !important;
+}
+
+.theme-dark .bg-teal-50,
+.theme-dark .hover\:bg-teal-50:hover {
+  background-color: rgba(20, 184, 166, 0.14) !important;
+}
+
+.theme-dark .text-teal-600,
+.theme-dark .hover\:text-teal-600:hover {
+  color: #89eee0 !important;
+}
+
+.theme-dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+}
+
+.theme-dark .border-amber-200 {
+  border-color: rgba(245, 158, 11, 0.22) !important;
+}
+
+.theme-dark .shadow-sm,
+.theme-dark .shadow-md,
+.theme-dark .shadow-lg {
+  box-shadow: var(--app-shadow) !important;
+}
+
 /* SVAR Filemanager: hide toolbar (search, mode switcher) and reclaim its space */
 .wx-filemanager {
   --wx-fm-toolbar-height: 0px !important;
@@ -85,4 +376,15 @@
 /* SVAR Filemanager: prevent overflow caused by max-width: 100vw */
 .wx-filemanager {
   max-width: 100% !important;
+}
+
+.theme-dark .wx-filemanager {
+  --wx-fm-background: transparent !important;
+}
+
+.theme-dark .wx-filemanager .wx-body,
+.theme-dark .wx-filemanager .wx-header,
+.theme-dark .wx-filemanager .wx-sidebar {
+  background-color: transparent !important;
+  color: var(--app-text-soft) !important;
 }
