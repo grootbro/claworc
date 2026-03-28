@@ -58,6 +58,9 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/init-setup/up \
     /etc/s6-overlay/s6-rc.d/svc-desktop/run \
     /etc/s6-overlay/s6-rc.d/svc-openclaw/run \
     /etc/s6-overlay/s6-rc.d/svc-sshd/run \
-    /etc/s6-overlay/s6-rc.d/svc-cron/run
+    /etc/s6-overlay/s6-rc.d/svc-cron/run \
+    /usr/local/bin/claworc-healthcheck
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10m --retries=3 CMD ["/usr/local/bin/claworc-healthcheck", "ready"]
 
 ENTRYPOINT ["/init"]

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { exec, execAsUser, sleep, getContainers, dumpDiagnostics } from "./helpers";
+import { exec, execAsUser, sleep, getContainers, dumpDiagnostics, hostExec } from "./helpers";
 
 const containers = getContainers();
 const container = containers.chromium?.name;
@@ -113,6 +113,28 @@ describe.skipIf(!container)("agent image", { timeout: 300_000 }, () => {
     const result = execAsUser(container!, "openclaw status");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("ws://127.0.0.1:18789");
+  });
+
+  it("image healthcheck reports healthy once services are ready", async () => {
+    let status = "";
+    const deadline = Date.now() + 60_000;
+
+    while (Date.now() < deadline) {
+      status = hostExec([
+        "docker",
+        "inspect",
+        "-f",
+        "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
+        container!,
+      ]).trim();
+      if (status === "healthy") break;
+      await sleep(2_000);
+    }
+
+    expect(status).toBe("healthy");
+
+    const result = exec(container!, ["/usr/local/bin/claworc-healthcheck", "ready"]);
+    expect(result.exitCode).toBe(0);
   });
 
   it("openclaw gateway stop exits without crash", () => {
