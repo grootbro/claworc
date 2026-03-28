@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +27,7 @@ import (
 // Provider catalog proxy (claworc.com/providers API, 1-hour in-process cache)
 // ---------------------------------------------------------------------------
 
-const catalogBaseURL = "https://claworc.com/providers"
+var catalogBaseURL = "https://claworc.com/providers"
 
 type catalogCacheEntry struct {
 	body      []byte
@@ -40,6 +41,23 @@ var (
 )
 
 func proxyCatalog(w http.ResponseWriter, path string) {
+	if path == "/" {
+		entries, err := ensureRootCatalog()
+		if err != nil {
+			log.Printf("catalog proxy: fetch %s: %v", utils.SanitizeForLog(path), err)
+			http.Error(w, `{"error":"catalog unavailable"}`, http.StatusBadGateway)
+			return
+		}
+		body, err := json.Marshal(entries)
+		if err != nil {
+			http.Error(w, `{"error":"catalog encode error"}`, http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(body)
+		return
+	}
+
 	catalogCacheMu.RLock()
 	entry := catalogCache[path]
 	catalogCacheMu.RUnlock()
@@ -154,6 +172,75 @@ type catalogRootEntry struct {
 	Models    []catalogRootModel `json:"models"`
 }
 
+func intPtr(v int) *int {
+	return &v
+}
+
+func localCatalogOverrides() []catalogRootEntry {
+	return []catalogRootEntry{
+		{
+			Name:      "gemini",
+			Label:     "Gemini",
+			IconKey:   "gemini",
+			APIFormat: "google-generative-ai",
+			BaseURL:   "https://generativelanguage.googleapis.com/v1beta",
+			Models: []catalogRootModel{
+				{
+					ModelID:        "gemini-3-flash-preview",
+					ModelName:      "Gemini 3 Flash Preview",
+					Reasoning:      true,
+					Vision:         true,
+					ContextWindow:  intPtr(1048576),
+					MaxTokens:      intPtr(65536),
+					InputCost:      0.50,
+					OutputCost:     3.00,
+					CachedReadCost: 0.05,
+				},
+				{
+					ModelID:        "gemini-2.5-flash",
+					ModelName:      "Gemini 2.5 Flash",
+					Reasoning:      true,
+					Vision:         true,
+					ContextWindow:  intPtr(1048576),
+					MaxTokens:      intPtr(65536),
+					InputCost:      0.30,
+					OutputCost:     2.50,
+					CachedReadCost: 0.03,
+				},
+			},
+		},
+	}
+}
+
+func mergeCatalogEntries(remote []catalogRootEntry) []catalogRootEntry {
+	byKey := make(map[string]catalogRootEntry, len(remote)+len(localCatalogOverrides()))
+	for _, entry := range remote {
+		entry.Name = strings.ToLower(strings.TrimSpace(entry.Name))
+		if entry.Name == "" {
+			continue
+		}
+		byKey[entry.Name] = entry
+	}
+	for _, entry := range localCatalogOverrides() {
+		entry.Name = strings.ToLower(strings.TrimSpace(entry.Name))
+		if entry.Name == "" {
+			continue
+		}
+		// Local overrides win so the fork can fix or extend upstream catalog data.
+		byKey[entry.Name] = entry
+	}
+	keys := make([]string, 0, len(byKey))
+	for key := range byKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	merged := make([]catalogRootEntry, 0, len(keys))
+	for _, key := range keys {
+		merged = append(merged, byKey[key])
+	}
+	return merged
+}
+
 // catalogModelToProviderModel converts a catalogRootModel to a database.ProviderModel.
 func catalogModelToProviderModel(m catalogRootModel) database.ProviderModel {
 	pm := database.ProviderModel{
@@ -183,7 +270,18 @@ func getCatalogRoot() ([]catalogRootEntry, error) {
 
 	resp, err := catalogHTTPClient.Get(catalogBaseURL + "/")
 	if err != nil {
-		return nil, err
+		entries := mergeCatalogEntries(nil)
+		if len(entries) == 0 {
+			return nil, err
+		}
+		body, marshalErr := json.Marshal(entries)
+		if marshalErr == nil {
+			catalogCacheMu.Lock()
+			catalogCache["/"] = &catalogCacheEntry{body: body, expiresAt: time.Now().Add(time.Hour)}
+			catalogCacheMu.Unlock()
+		}
+		log.Printf("catalog root fetch failed, using local overrides only: %v", err)
+		return entries, nil
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -191,17 +289,45 @@ func getCatalogRoot() ([]catalogRootEntry, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("catalog returned status %d", resp.StatusCode)
+		entries := mergeCatalogEntries(nil)
+		if len(entries) == 0 {
+			return nil, fmt.Errorf("catalog returned status %d", resp.StatusCode)
+		}
+		body, marshalErr := json.Marshal(entries)
+		if marshalErr == nil {
+			catalogCacheMu.Lock()
+			catalogCache["/"] = &catalogCacheEntry{body: body, expiresAt: time.Now().Add(time.Hour)}
+			catalogCacheMu.Unlock()
+		}
+		log.Printf("catalog root returned %d, using local overrides only", resp.StatusCode)
+		return entries, nil
+	}
+
+	var remoteEntries []catalogRootEntry
+	if err := json.Unmarshal(body, &remoteEntries); err != nil {
+		entries := mergeCatalogEntries(nil)
+		if len(entries) == 0 {
+			return nil, err
+		}
+		body, marshalErr := json.Marshal(entries)
+		if marshalErr == nil {
+			catalogCacheMu.Lock()
+			catalogCache["/"] = &catalogCacheEntry{body: body, expiresAt: time.Now().Add(time.Hour)}
+			catalogCacheMu.Unlock()
+		}
+		log.Printf("catalog root decode failed, using local overrides only: %v", err)
+		return entries, nil
+	}
+
+	entries := mergeCatalogEntries(remoteEntries)
+	body, err = json.Marshal(entries)
+	if err != nil {
+		return nil, err
 	}
 	entry := &catalogCacheEntry{body: body, expiresAt: time.Now().Add(time.Hour)}
 	catalogCacheMu.Lock()
 	catalogCache["/"] = entry
 	catalogCacheMu.Unlock()
-
-	var entries []catalogRootEntry
-	if err := json.Unmarshal(body, &entries); err != nil {
-		return nil, err
-	}
 	return entries, nil
 }
 
@@ -223,6 +349,43 @@ var getCatalogModels = func(catalogKey string) []database.ProviderModel {
 		result[i] = catalogModelToProviderModel(m)
 	}
 	return result
+}
+
+func catalogByName(entries []catalogRootEntry) map[string]catalogRootEntry {
+	result := make(map[string]catalogRootEntry, len(entries))
+	for _, entry := range entries {
+		key := strings.ToLower(strings.TrimSpace(entry.Name))
+		if key == "" {
+			continue
+		}
+		result[key] = entry
+	}
+	return result
+}
+
+func normalizeCatalogComparable(raw string) string {
+	return strings.TrimRight(strings.ToLower(strings.TrimSpace(raw)), "/")
+}
+
+func matchingCatalogKey(p database.LLMProvider, catalog map[string]catalogRootEntry) (string, bool) {
+	if key := strings.ToLower(strings.TrimSpace(p.Provider)); key != "" {
+		_, ok := catalog[key]
+		return key, ok
+	}
+
+	key := strings.ToLower(strings.TrimSpace(p.Key))
+	entry, ok := catalog[key]
+	if !ok {
+		return "", false
+	}
+
+	if normalizeCatalogComparable(p.Name) == normalizeCatalogComparable(entry.Label) ||
+		normalizeCatalogComparable(p.BaseURL) == normalizeCatalogComparable(entry.BaseURL) ||
+		normalizeCatalogComparable(p.APIType) == normalizeCatalogComparable(entry.APIFormat) {
+		return key, true
+	}
+
+	return "", false
 }
 
 var providerKeyRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]*[a-z0-9]$|^[a-z0-9]$`)
@@ -413,7 +576,7 @@ func pushProviderUpdateToInstances(providerID uint) {
 				return
 			}
 			ConfigureInstance(
-				bgCtx, orch, sshproxy.NewSSHInstance(sshClient), instName,
+				bgCtx, orch, sshproxy.NewSSHInstance(sshClient, getEffectiveOpenClawUser(inst)), instName,
 				models, gatewayProviders,
 				config.Cfg.LLMGatewayPort,
 			)
@@ -433,30 +596,35 @@ func SyncProviderModels(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Provider not found")
 		return
 	}
-	if p.Provider == "" {
+	catalogEntries, err := getCatalogRoot()
+	if err != nil {
+		log.Printf("SyncProviderModels: fetch catalog root: %v", err)
+		writeError(w, http.StatusBadGateway, "Failed to fetch catalog models")
+		return
+	}
+	catalog := catalogByName(catalogEntries)
+	catalogKey, ok := matchingCatalogKey(p, catalog)
+	if !ok {
 		writeError(w, http.StatusBadRequest, "Custom providers have no catalog to sync from")
 		return
 	}
 
-	// Force-refresh the root catalog cache
-	catalogCacheMu.Lock()
-	delete(catalogCache, "/")
-	catalogCacheMu.Unlock()
-
-	log.Printf("Syncing models for provider %d (%s)", p.ID, p.Provider)
-	models := getCatalogModels(p.Provider)
+	log.Printf("Syncing models for provider %d (%s)", p.ID, catalogKey)
+	models := getCatalogModels(catalogKey)
 	if models == nil {
-		log.Printf("Failed to fetch catalog models for provider %d (%s)", p.ID, p.Provider)
+		log.Printf("Failed to fetch catalog models for provider %d (%s)", p.ID, catalogKey)
 		writeError(w, http.StatusBadGateway, "Failed to fetch catalog models")
 		return
 	}
 
 	modelsJSON, _ := json.Marshal(models)
+	p.Provider = catalogKey
 	p.Models = string(modelsJSON)
 	if err := database.DB.Save(&p).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to update provider models")
 		return
 	}
+	pushProviderUpdateToInstances(p.ID)
 	log.Printf("Synced %d models for provider %d (%s)", len(models), p.ID, p.Provider)
 	writeJSON(w, http.StatusOK, toProviderResp(p))
 }
@@ -488,30 +656,28 @@ func SyncAllProviderModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	catalogByKey := make(map[string]catalogRootEntry, len(catalogEntries))
-	for _, e := range catalogEntries {
-		catalogByKey[e.Name] = e
-	}
+	catalogByKey := catalogByName(catalogEntries)
 
 	var providers []database.LLMProvider
 	database.DB.Order("id ASC").Find(&providers)
 
 	results := make([]syncProviderResult, 0, len(providers))
 	for _, p := range providers {
-		res := syncProviderResult{ID: p.ID, Key: p.Key, Catalog: p.Provider}
-		if p.Provider == "" {
-			res.Skipped = true
-			results = append(results, res)
-			continue
-		}
-		catEntry, found := catalogByKey[p.Provider]
+		catalogKey, found := matchingCatalogKey(p, catalogByKey)
+		res := syncProviderResult{ID: p.ID, Key: p.Key, Catalog: catalogKey}
 		if !found {
 			res.Skipped = true
 			results = append(results, res)
 			continue
 		}
+		catEntry := catalogByKey[catalogKey]
 
 		changes := map[string]syncProviderChange{}
+
+		if p.Provider != catalogKey {
+			changes["provider"] = syncProviderChange{Old: p.Provider, New: catalogKey}
+			p.Provider = catalogKey
+		}
 
 		if p.Name != catEntry.Label {
 			changes["name"] = syncProviderChange{Old: p.Name, New: catEntry.Label}
@@ -539,6 +705,7 @@ func SyncAllProviderModels(w http.ResponseWriter, r *http.Request) {
 
 		if len(changes) > 0 {
 			database.DB.Save(&p)
+			pushProviderUpdateToInstances(p.ID)
 			log.Printf("SyncAllProviderModels: updated provider %d (%s): %v", p.ID, p.Provider, changes)
 			res.Updated = true
 			res.Changes = changes
@@ -634,6 +801,24 @@ type UsageProviderInfo struct {
 	Name string `json:"name"`
 }
 
+type UsageCoverage struct {
+	TotalInstances      int      `json:"total_instances"`
+	AccessibleInstances int      `json:"accessible_instances"`
+	CollectedInstances  int      `json:"collected_instances"`
+	SkippedInstances    int      `json:"skipped_instances"`
+	Skipped             []string `json:"skipped,omitempty"`
+}
+
+type UsageStatsMeta struct {
+	Source          string         `json:"source"`
+	SourceLabel     string         `json:"source_label"`
+	CountLabel      string         `json:"count_label"`
+	TimeSeriesLabel string         `json:"time_series_label"`
+	Resettable      bool           `json:"resettable"`
+	Notes           []string       `json:"notes,omitempty"`
+	Coverage        *UsageCoverage `json:"coverage,omitempty"`
+}
+
 type UsageStatsResponse struct {
 	ByInstance  []InstanceUsageStat `json:"by_instance"`
 	ByProvider  []ProviderUsageStat `json:"by_provider"`
@@ -643,6 +828,7 @@ type UsageStatsResponse struct {
 	Instances   []UsageInstanceInfo `json:"instances"`
 	Providers   []UsageProviderInfo `json:"providers"`
 	Granularity string              `json:"granularity"`
+	Meta        UsageStatsMeta      `json:"meta"`
 }
 
 func GetUsageStats(w http.ResponseWriter, r *http.Request) {
@@ -674,9 +860,15 @@ func GetUsageStats(w http.ResponseWriter, r *http.Request) {
 		granularity = "day"
 	}
 
+	source := strings.ToLower(strings.TrimSpace(q.Get("source")))
+	if source == "" {
+		source = "agent"
+	}
+
 	// Build optional filters
 	var instanceFilter *uint
 	var providerFilter *uint
+	var providerFilterKey string
 	if v := q.Get("instance_id"); v != "" {
 		if id, err := strconv.ParseUint(v, 10, 32); err == nil {
 			uid := uint(id)
@@ -689,18 +881,89 @@ func GetUsageStats(w http.ResponseWriter, r *http.Request) {
 			providerFilter = &uid
 		}
 	}
+	if v := q.Get("provider_key"); v != "" {
+		providerFilterKey = v
+	} else if v := q.Get("provider"); v != "" {
+		if _, err := strconv.ParseUint(v, 10, 32); err == nil {
+			if providerFilter == nil {
+				if id, parseErr := strconv.ParseUint(v, 10, 32); parseErr == nil {
+					uid := uint(id)
+					providerFilter = &uid
+				}
+			}
+		} else {
+			providerFilterKey = v
+		}
+	}
+
+	var providers []database.LLMProvider
+	if err := database.DB.Order("id ASC").Find(&providers).Error; err != nil {
+		log.Printf("usage stats(providers): %v", err)
+		writeError(w, http.StatusInternalServerError, "Failed to load providers")
+		return
+	}
+
+	if providerFilterKey == "" && providerFilter != nil {
+		for _, provider := range providers {
+			if provider.ID == *providerFilter {
+				providerFilterKey = provider.Key
+				break
+			}
+		}
+	}
+
+	if source != "gateway" {
+		resp, err := aggregateAgentSessionUsage(r, startDate, endDate, instanceFilter, providerFilterKey, granularity)
+		if err != nil {
+			log.Printf("usage stats(agent): %v", err)
+			writeError(w, http.StatusInternalServerError, "Failed to aggregate agent session usage")
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	accessibleInstances, err := listAccessibleInstances(r)
+	if err != nil {
+		log.Printf("usage stats(instances): %v", err)
+		writeError(w, http.StatusInternalServerError, "Failed to load accessible instances")
+		return
+	}
+
+	_, providerInfos := buildUsageProviderLookup(providers)
+	accessibleIDs := make([]uint, 0, len(accessibleInstances))
+	type instInfo struct{ Name, DisplayName string }
+	instInfoMap := map[uint]instInfo{}
+	for _, inst := range accessibleInstances {
+		accessibleIDs = append(accessibleIDs, inst.ID)
+		instInfoMap[inst.ID] = instInfo{Name: inst.Name, DisplayName: inst.DisplayName}
+	}
+
+	provInfoMap := map[uint]struct{ Key, Name string }{}
+	for _, p := range providers {
+		provInfoMap[p.ID] = struct{ Key, Name string }{p.Key, p.Name}
+	}
+
+	filterProviderIDs := []uint(nil)
+	if providerFilter != nil {
+		filterProviderIDs = append(filterProviderIDs, *providerFilter)
+	} else if providerFilterKey != "" {
+		filterProviderIDs = matchedUsageProviderIDs(providers, providerFilterKey)
+	}
 
 	// Use DATE() to compare only the date part, making filtering format-agnostic
 	// regardless of how GORM/SQLite stores the time.Time value.
 	baseWhere := "DATE(requested_at) >= ? AND DATE(requested_at) <= ?"
 	baseArgs := []interface{}{startDate, endDate}
+	baseWhere, baseArgs = appendUintInFilter(baseWhere, baseArgs, "instance_id", accessibleIDs)
 	if instanceFilter != nil {
 		baseWhere += " AND instance_id = ?"
 		baseArgs = append(baseArgs, *instanceFilter)
 	}
-	if providerFilter != nil {
-		baseWhere += " AND provider_id = ?"
-		baseArgs = append(baseArgs, *providerFilter)
+	if len(filterProviderIDs) > 0 {
+		baseWhere, baseArgs = appendUintInFilter(baseWhere, baseArgs, "provider_id", filterProviderIDs)
+	} else if providerFilterKey != "" {
+		baseWhere += " AND 1=0"
 	}
 
 	// by_instance
@@ -764,31 +1027,31 @@ func GetUsageStats(w http.ResponseWriter, r *http.Request) {
 		baseArgs...,
 	).Scan(&tsRows)
 
-	// Load instance name map from main DB
-	var instances []database.Instance
-	database.DB.Select("id, name, display_name").Find(&instances)
-	type instInfo struct{ Name, DisplayName string }
-	instInfoMap := map[uint]instInfo{}
-	for _, inst := range instances {
-		instInfoMap[inst.ID] = instInfo{Name: inst.Name, DisplayName: inst.DisplayName}
-	}
-
-	// Load provider key/name map from main DB
-	var providers []database.LLMProvider
-	database.DB.Select("id, key, name").Find(&providers)
-	provInfoMap := map[uint]struct{ Key, Name string }{}
-	for _, p := range providers {
-		provInfoMap[p.ID] = struct{ Key, Name string }{p.Key, p.Name}
-	}
-
 	// Build response
 	resp := UsageStatsResponse{
-		ByInstance: make([]InstanceUsageStat, len(instRows)),
-		ByProvider: make([]ProviderUsageStat, len(provRows)),
-		ByModel:    make([]ModelUsageStat, len(modelRows)),
-		TimeSeries: make([]UsageTimePoint, len(tsRows)),
-		Instances:  make([]UsageInstanceInfo, len(instances)),
-		Providers:  make([]UsageProviderInfo, len(providers)),
+		ByInstance:  make([]InstanceUsageStat, len(instRows)),
+		ByProvider:  make([]ProviderUsageStat, len(provRows)),
+		ByModel:     make([]ModelUsageStat, len(modelRows)),
+		TimeSeries:  make([]UsageTimePoint, len(tsRows)),
+		Instances:   make([]UsageInstanceInfo, len(accessibleInstances)),
+		Providers:   providerInfos,
+		Granularity: granularity,
+		Meta: UsageStatsMeta{
+			Source:          "gateway",
+			SourceLabel:     "Gateway Logs",
+			CountLabel:      "Total Requests",
+			TimeSeriesLabel: "Requests Over Time",
+			Resettable:      true,
+			Notes: []string{
+				"Counts come from the central claworc LLM gateway request log.",
+				"This view can miss agent-side session activity that never passed through the shared gateway.",
+			},
+			Coverage: &UsageCoverage{
+				TotalInstances:      len(accessibleInstances),
+				AccessibleInstances: len(accessibleInstances),
+				CollectedInstances:  len(accessibleInstances),
+			},
+		},
 	}
 
 	for i, row := range instRows {
@@ -849,14 +1112,9 @@ func GetUsageStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	for i, inst := range instances {
+	for i, inst := range accessibleInstances {
 		resp.Instances[i] = UsageInstanceInfo{ID: inst.ID, Name: inst.Name, DisplayName: inst.DisplayName}
 	}
-	for i, p := range providers {
-		resp.Providers[i] = UsageProviderInfo{ID: p.ID, Key: p.Key, Name: p.Name}
-	}
-
-	resp.Granularity = granularity
 	writeJSON(w, http.StatusOK, resp)
 }
 

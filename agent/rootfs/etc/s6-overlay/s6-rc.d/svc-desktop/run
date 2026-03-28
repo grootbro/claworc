@@ -1,22 +1,28 @@
 #!/command/with-contenv bash
 
 export DISPLAY=:0
-export HOME=/home/claworc
+export OPENCLAW_USER="${CLAWORC_OPENCLAW_USER:-claworc}"
+export OPENCLAW_HOME="${CLAWORC_OPENCLAW_HOME:-/home/claworc}"
+export HOME="$OPENCLAW_HOME"
 export LANG=en_US.UTF-8
+export BROWSER_DATA_DIR="${OPENCLAW_BROWSER_DATA_DIR:-$OPENCLAW_HOME/chrome-data}"
+export BROWSER_METRICS_DIR="$BROWSER_DATA_DIR/DeferredBrowserMetrics"
 
-# Wait for X server to be ready
 while ! xdpyinfo -display :0 >/dev/null 2>&1; do sleep 0.5; done
 
-# Start openbox window manager in background
-s6-setuidgid claworc openbox &
+s6-setuidgid "$OPENCLAW_USER" openbox &
 
-# Build optional extra flags (array preserves spaces in values)
+prepare_browser_state() {
+  mkdir -p "$BROWSER_METRICS_DIR"
+  chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$BROWSER_DATA_DIR"
+  find "$BROWSER_METRICS_DIR" -mindepth 1 -delete 2>/dev/null || true
+}
+
 EXTRA_ARGS=()
 if [ -n "$CHROMIUM_USER_AGENT" ]; then
   EXTRA_ARGS+=("--user-agent=$CHROMIUM_USER_AGENT")
 fi
 
-# Auto-detect browser
 if command -v google-chrome-stable >/dev/null 2>&1; then
   BROWSER=google-chrome-stable
   EXTRA_ARGS+=(--no-sandbox)
@@ -28,17 +34,18 @@ else
   EXTRA_ARGS+=(--no-sandbox)
 fi
 
-# Run browser in a restart loop
 while true; do
-  s6-setuidgid claworc $BROWSER \
+  prepare_browser_state
+  s6-setuidgid "$OPENCLAW_USER" $BROWSER \
     --no-first-run \
     --password-store=basic \
     --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
     --start-maximized \
-    --user-data-dir=/home/claworc/chrome-data \
+    --user-data-dir="$BROWSER_DATA_DIR" \
     --remote-debugging-port=9222 \
     --remote-debugging-address=127.0.0.1 \
     --disable-default-apps \
+    --disable-breakpad \
     --disable-features=CloseWindowWithLastTab \
     --disable-blink-features=AutomationControlled \
     --disable-infobars \

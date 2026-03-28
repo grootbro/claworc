@@ -105,14 +105,16 @@ export function useCatalogProviderDetail(key: string | null) {
 export function useUsageStats(params: {
   start_date?: string;
   end_date?: string;
+  source?: string;
   instance_id?: number;
   provider_id?: number;
+  provider_key?: string;
 }) {
   return useQuery<UsageStatsResponse>({
     queryKey: ["llm-usage-stats", params],
     queryFn: () => fetchUsageStats(params),
-    staleTime: 10_000,
-    refetchInterval: 10_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 }
 

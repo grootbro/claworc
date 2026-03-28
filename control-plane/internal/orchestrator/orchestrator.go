@@ -20,6 +20,9 @@ type ContainerOrchestrator interface {
 	RestartInstance(ctx context.Context, name string) error
 	GetInstanceStatus(ctx context.Context, name string) (string, error)
 	GetInstanceImageInfo(ctx context.Context, name string) (string, error)
+	ResolveImageContract(ctx context.Context, imageRef string) (ImageContract, error)
+	BuildArchiveImage(ctx context.Context, params ArchiveImageBuildParams) (*ArchiveImageBuildResult, error)
+	ExportInstanceBackup(ctx context.Context, params InstanceArchiveExportParams) (*InstanceArchiveExportResult, error)
 
 	// Config
 	UpdateInstanceConfig(ctx context.Context, name string, configJSON string) error
@@ -42,6 +45,43 @@ type ContainerOrchestrator interface {
 	ExecInInstance(ctx context.Context, name string, cmd []string) (stdout string, stderr string, exitCode int, err error)
 }
 
+type ImageContract struct {
+	Mode               string
+	OpenClawUser       string
+	OpenClawHome       string
+	BrowserMetricsPath string
+}
+
+type ArchiveImageBuildParams struct {
+	DisplayName string
+	BaseImage   string
+	ArchiveName string
+	ArchivePath string
+}
+
+type ArchiveImageBuildResult struct {
+	ImageRef        string
+	BaseImage       string
+	DetectedRoot    string
+	DetectedLayout  string
+	Contract        ImageContract
+	Notes           []string
+}
+
+type InstanceArchiveExportParams struct {
+	Name        string
+	DisplayName string
+	Format      string
+}
+
+type InstanceArchiveExportResult struct {
+	ArchivePath    string
+	ArchiveName    string
+	RootDirectory  string
+	Format         string
+	CleanupPath    string
+}
+
 type CreateParams struct {
 	Name            string
 	CPURequest      string
@@ -52,9 +92,13 @@ type CreateParams struct {
 	StorageHome     string
 	ContainerImage  string
 	VNCResolution   string
-	Timezone        string
-	UserAgent       string
-	EnvVars         map[string]string
+	Timezone           string
+	UserAgent          string
+	ImageMode          string
+	OpenClawUser       string
+	OpenClawHome       string
+	BrowserMetricsPath string
+	EnvVars            map[string]string
 	OnProgress      func(string)
 }
 

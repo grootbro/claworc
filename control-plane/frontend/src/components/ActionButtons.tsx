@@ -4,6 +4,7 @@ import {
   Terminal,
 
   Copy,
+  Download,
   Play,
   Square,
   RefreshCw,
@@ -38,16 +39,10 @@ export default function ActionButtons({
   const isStopping = instance.status === "stopping";
   const isUnavailable = !isRunning;
 
-  const controlUrl = (() => {
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const gwUrl = `${wsProtocol}//${window.location.host}/openclaw/${instance.id}/`;
-    const params = new URLSearchParams({
-      gatewayUrl: gwUrl,
-      token: instance.gateway_token,
-      session: "browser",
-    });
-    return `/openclaw/${instance.id}/?${params}`;
-  })();
+  const gatewayProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const gatewayUrl = `${gatewayProtocol}//${window.location.host}/openclaw/${instance.id}/`;
+  const controlUrl = `/openclaw/${instance.id}/chat?session=browser&gatewayUrl=${encodeURIComponent(gatewayUrl)}#token=${encodeURIComponent(instance.gateway_token)}`;
+  const backupUrl = `/api/v1/instances/${instance.id}/backup-archive?format=zip`;
 
   const disabledLinkClass = "pointer-events-none opacity-30";
 
@@ -88,6 +83,13 @@ export default function ActionButtons({
         >
           <Copy size={16} />
         </button>
+        <a
+          href={backupUrl}
+          title="Download Backup (.zip)"
+          className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+        >
+          <Download size={16} />
+        </a>
         <button
           onClick={() => onRestart(instance.id)}
           disabled={loading || !isRunning || isRestarting}

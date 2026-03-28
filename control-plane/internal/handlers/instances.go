@@ -5,10 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,6 +45,12 @@ type modelsConfig struct {
 	Extra    []string `json:"extra"`
 }
 
+var recommendedDefaultModels = []string{
+	"gemini/gemini-3-flash-preview",
+	"gemini/gemini-2.5-flash",
+	"openai/gpt-5.2",
+}
+
 type instanceCreateRequest struct {
 	DisplayName      string            `json:"display_name"`
 	CPURequest       string            `json:"cpu_request"`
@@ -71,6 +81,7 @@ type instanceResponse struct {
 	Name                  string          `json:"name"`
 	DisplayName           string          `json:"display_name"`
 	Status                string          `json:"status"`
+	OwnerUserID           *uint           `json:"owner_user_id"`
 	CPURequest            string          `json:"cpu_request"`
 	CPULimit              string          `json:"cpu_limit"`
 	MemoryRequest         string          `json:"memory_request"`
@@ -98,6 +109,47 @@ type instanceResponse struct {
 	SortOrder             int             `json:"sort_order"`
 	CreatedAt             string          `json:"created_at"`
 	UpdatedAt             string          `json:"updated_at"`
+}
+
+type inspectImageRequest struct {
+	ContainerImage string `json:"container_image"`
+}
+
+type imageContractInspectionResponse struct {
+	ImageRef           string   `json:"image_ref"`
+	Mode               string   `json:"mode"`
+	OpenClawUser       string   `json:"open_claw_user"`
+	OpenClawHome       string   `json:"open_claw_home"`
+	BrowserMetricsPath string   `json:"browser_metrics_path"`
+	PrebuiltReady      bool     `json:"prebuilt_ready"`
+	Notes              []string `json:"notes"`
+}
+
+type archiveImageImportResponse struct {
+	GeneratedImageRef  string   `json:"generated_image_ref"`
+	BaseImage          string   `json:"base_image"`
+	DetectedRoot       string   `json:"detected_root"`
+	DetectedLayout     string   `json:"detected_layout"`
+	Mode               string   `json:"mode"`
+	OpenClawUser       string   `json:"open_claw_user"`
+	OpenClawHome       string   `json:"open_claw_home"`
+	BrowserMetricsPath string   `json:"browser_metrics_path"`
+	PrebuiltReady      bool     `json:"prebuilt_ready"`
+	Notes              []string `json:"notes"`
+}
+
+func canSelfProvision(user *database.User) bool {
+	return user != nil && (user.Role == "admin" || user.CanCreateInstances)
+}
+
+func canManageOwnedInstance(user *database.User, inst database.Instance) bool {
+	if user == nil {
+		return false
+	}
+	if user.Role == "admin" {
+		return true
+	}
+	return inst.OwnerUserID != nil && *inst.OwnerUserID == user.ID
 }
 
 func generateName(displayName string) string {
@@ -149,13 +201,21 @@ func parseModelsConfig(raw string) modelsConfig {
 	return mc
 }
 
-func computeEffectiveModels(mc modelsConfig) []string {
-	// Get global default models
+func getDefaultModels() []string {
 	defaultModelsJSON, _ := database.GetSetting("default_models")
 	var defaults []string
 	if defaultModelsJSON != "" {
 		json.Unmarshal([]byte(defaultModelsJSON), &defaults)
 	}
+	defaults = dedupeStrings(defaults)
+	if len(defaults) == 0 {
+		return append([]string(nil), recommendedDefaultModels...)
+	}
+	return defaults
+}
+
+func computeEffectiveModels(mc modelsConfig) []string {
+	defaults := getDefaultModels()
 
 	disabledSet := make(map[string]bool)
 	for _, d := range mc.Disabled {
@@ -173,6 +233,84 @@ func computeEffectiveModels(mc modelsConfig) []string {
 		effective = []string{}
 	}
 	return effective
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	if out == nil {
+		return []string{}
+	}
+	return out
+}
+
+func normalizeModelsConfig(mc modelsConfig, defaultModel string) modelsConfig {
+	mc.Disabled = dedupeStrings(mc.Disabled)
+	mc.Extra = dedupeStrings(mc.Extra)
+
+	if defaultModel != "" && !slices.Contains(getDefaultModels(), defaultModel) && !slices.Contains(mc.Extra, defaultModel) {
+		mc.Extra = append([]string{defaultModel}, mc.Extra...)
+	}
+
+	return mc
+}
+
+func normalizeEnabledProviders(enabled []uint, selectedModels []string) []uint {
+	set := make(map[uint]struct{}, len(enabled))
+	result := make([]uint, 0, len(enabled))
+	for _, id := range enabled {
+		if _, ok := set[id]; ok {
+			continue
+		}
+		set[id] = struct{}{}
+		result = append(result, id)
+	}
+
+	providerKeys := make(map[string]struct{})
+	for _, model := range selectedModels {
+		providerKey, _, ok := strings.Cut(model, "/")
+		if !ok || providerKey == "" {
+			continue
+		}
+		providerKeys[providerKey] = struct{}{}
+	}
+	if len(providerKeys) == 0 {
+		return result
+	}
+
+	keys := make([]string, 0, len(providerKeys))
+	for key := range providerKeys {
+		keys = append(keys, key)
+	}
+
+	var providers []database.LLMProvider
+	database.DB.Where("key IN ?", keys).Find(&providers)
+	extraIDs := make([]uint, 0, len(providers))
+	for _, provider := range providers {
+		if _, ok := set[provider.ID]; ok {
+			continue
+		}
+		set[provider.ID] = struct{}{}
+		extraIDs = append(extraIDs, provider.ID)
+	}
+	slices.Sort(extraIDs)
+	result = append(result, extraIDs...)
+
+	return result
 }
 
 // GatewayProvider holds the virtual auth key, API type, and models for a gateway provider.
@@ -272,6 +410,7 @@ func instanceToResponse(inst database.Instance, status string) instanceResponse 
 		Name:                  inst.Name,
 		DisplayName:           inst.DisplayName,
 		Status:                status,
+		OwnerUserID:           inst.OwnerUserID,
 		StatusMessage:         getStatusMessage(inst.ID),
 		CPURequest:            inst.CPURequest,
 		CPULimit:              inst.CPULimit,
@@ -299,6 +438,19 @@ func instanceToResponse(inst database.Instance, status string) instanceResponse 
 		CreatedAt:             formatTimestamp(inst.CreatedAt),
 		UpdatedAt:             formatTimestamp(inst.UpdatedAt),
 	}
+}
+
+func sanitizeInstanceResponseForUser(resp *instanceResponse, user *database.User) {
+	if user == nil {
+		resp.ControlURL = ""
+		resp.GatewayToken = ""
+		return
+	}
+	if user.Role == "admin" || user.CanLaunchControlUI {
+		return
+	}
+	resp.ControlURL = ""
+	resp.GatewayToken = ""
 }
 
 func resolveStatus(inst *database.Instance, orchStatus string) string {
@@ -386,19 +538,313 @@ func getEffectiveUserAgent(inst database.Instance) string {
 	return ""
 }
 
+func getEffectiveOpenClawUser(inst database.Instance) string {
+	contract := orchestrator.NormalizeImageContract(orchestrator.ImageContract{
+		OpenClawUser: inst.OpenClawUser,
+		OpenClawHome: inst.OpenClawHome,
+	})
+	return contract.OpenClawUser
+}
+
+func getEffectiveOpenClawHome(inst database.Instance) string {
+	contract := orchestrator.NormalizeImageContract(orchestrator.ImageContract{
+		OpenClawUser: inst.OpenClawUser,
+		OpenClawHome: inst.OpenClawHome,
+	})
+	return contract.OpenClawHome
+}
+
+func resolveImageContract(ctx context.Context, orch orchestrator.ContainerOrchestrator, image string) orchestrator.ImageContract {
+	contract, err := orch.ResolveImageContract(ctx, image)
+	if err != nil {
+		log.Printf("Failed to resolve image contract for %s: %v", utils.SanitizeForLog(image), err)
+		return orchestrator.NormalizeImageContract(orchestrator.ImageContract{})
+	}
+	return orchestrator.NormalizeImageContract(contract)
+}
+
+func persistImageContract(instanceID uint, contract orchestrator.ImageContract) {
+	contract = orchestrator.NormalizeImageContract(contract)
+	if err := database.DB.Model(&database.Instance{}).Where("id = ?", instanceID).Updates(map[string]interface{}{
+		"open_claw_user": contract.OpenClawUser,
+		"open_claw_home": contract.OpenClawHome,
+		"updated_at":     time.Now().UTC(),
+	}).Error; err != nil {
+		log.Printf("Failed to persist image contract for instance %d: %v", instanceID, err)
+	}
+}
+
+func buildImageContractInspectionResponse(imageRef string, contract orchestrator.ImageContract) imageContractInspectionResponse {
+	contract = orchestrator.NormalizeImageContract(contract)
+	notes := []string{}
+
+	if contract.Mode == "prebuilt" {
+		notes = append(notes, "Image explicitly declares prebuilt mode, so Claworc will keep its baked OpenClaw runtime contract.")
+	} else {
+		notes = append(notes, "Image does not explicitly declare prebuilt mode. Claworc can still run it, but baked OpenClaw homes are safer with explicit labels.")
+	}
+
+	if contract.OpenClawUser == orchestrator.DefaultOpenClawUser && contract.OpenClawHome == orchestrator.DefaultOpenClawHome {
+		notes = append(notes, "Resolved runtime matches the default Claworc contract.")
+	} else {
+		notes = append(notes, fmt.Sprintf("Resolved non-default runtime: user %q with home %q.", contract.OpenClawUser, contract.OpenClawHome))
+	}
+
+	if contract.Mode != "prebuilt" {
+		notes = append(notes, "Recommended labels: io.claworc.image-mode, io.claworc.openclaw-user, io.claworc.openclaw-home.")
+	}
+
+	return imageContractInspectionResponse{
+		ImageRef:           imageRef,
+		Mode:               contract.Mode,
+		OpenClawUser:       contract.OpenClawUser,
+		OpenClawHome:       contract.OpenClawHome,
+		BrowserMetricsPath: contract.BrowserMetricsPath,
+		PrebuiltReady:      contract.Mode == "prebuilt",
+		Notes:              notes,
+	}
+}
+
+func humanizeArchiveImportError(err error) string {
+	if err == nil {
+		return "Failed to build image from archive"
+	}
+
+	msg := strings.TrimSpace(err.Error())
+	switch {
+	case strings.Contains(msg, "archive must contain a .openclaw directory"):
+		return "Archive is missing an OpenClaw home. Put .openclaw at the archive root, or wrap everything in one top-level folder that contains .openclaw."
+	case strings.Contains(msg, "multiple possible OpenClaw homes"):
+		return "Archive contains more than one possible OpenClaw home. Keep exactly one .openclaw root in the export."
+	case strings.Contains(msg, "archive symlinks are not supported"), strings.Contains(msg, "symlinks are not supported in imported archives"):
+		return "Archive contains symlinks. Repack it with real files only, without symbolic links."
+	case strings.Contains(msg, "unsupported archive format"):
+		return "Unsupported archive format. Use .zip, .tar, .tar.gz, or .tgz."
+	case strings.Contains(msg, "invalid zip archive"), strings.Contains(msg, "invalid gzip archive"), strings.Contains(msg, "read tar archive"):
+		return "Archive could not be read cleanly. Re-export it as .zip, .tar, .tar.gz, or .tgz and try again."
+	default:
+		return msg
+	}
+}
+
+func humanizeBackupExportError(err error) string {
+	if err == nil {
+		return "Failed to export instance backup"
+	}
+
+	msg := strings.TrimSpace(err.Error())
+	switch {
+	case strings.Contains(msg, "unsupported archive format"):
+		return "Unsupported backup format. Use zip or tgz."
+	case strings.Contains(msg, "instance home volume not found"):
+		return "This bot does not have a readable home volume on the current server."
+	case strings.Contains(msg, "does not contain a .openclaw directory"):
+		return "This bot home is missing .openclaw, so Claworc cannot build a restore-ready backup from it yet."
+	case strings.Contains(msg, "export staging failed"):
+		return "Claworc could not stage the bot home for backup. Try again in a moment, or restart the instance if its filesystem is mid-change."
+	default:
+		return msg
+	}
+}
+
+func InspectImageContract(w http.ResponseWriter, r *http.Request) {
+	var req inspectImageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	imageRef := strings.TrimSpace(req.ContainerImage)
+	if imageRef == "" {
+		writeError(w, http.StatusBadRequest, "Container image is required")
+		return
+	}
+
+	orch := orchestrator.Get()
+	if orch == nil || !orch.IsAvailable(r.Context()) {
+		writeError(w, http.StatusServiceUnavailable, "Orchestrator unavailable")
+		return
+	}
+
+	contract, err := orch.ResolveImageContract(r.Context(), imageRef)
+	if err != nil {
+		log.Printf("Failed to inspect image contract for %s: %v", utils.SanitizeForLog(imageRef), err)
+		writeError(w, http.StatusBadRequest, "Failed to inspect image. Verify that the reference exists and the server can pull it.")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, buildImageContractInspectionResponse(imageRef, contract))
+}
+
+func ImportArchiveImage(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	if user.Role != "admin" {
+		writeError(w, http.StatusForbidden, "Only admins can import archive images")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 512<<20)
+	if err := r.ParseMultipartForm(512 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "Archive too large or invalid form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Missing archive file")
+		return
+	}
+	defer file.Close()
+
+	tmpFile, err := os.CreateTemp("", "claworc-archive-import-*")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to create temporary file")
+		return
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := io.Copy(tmpFile, file); err != nil {
+		tmpFile.Close()
+		writeError(w, http.StatusBadRequest, "Failed to read uploaded archive")
+		return
+	}
+	if err := tmpFile.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to finalize uploaded archive")
+		return
+	}
+
+	baseImage := strings.TrimSpace(r.FormValue("base_image"))
+	displayName := strings.TrimSpace(r.FormValue("display_name"))
+
+	orch := orchestrator.Get()
+	if orch == nil || !orch.IsAvailable(r.Context()) {
+		writeError(w, http.StatusServiceUnavailable, "Orchestrator unavailable")
+		return
+	}
+
+	result, err := orch.BuildArchiveImage(r.Context(), orchestrator.ArchiveImageBuildParams{
+		DisplayName: displayName,
+		BaseImage:   baseImage,
+		ArchiveName: header.Filename,
+		ArchivePath: tmpPath,
+	})
+	if err != nil {
+		log.Printf("Failed to import archive image %s: %v", utils.SanitizeForLog(header.Filename), err)
+		writeError(w, http.StatusBadRequest, humanizeArchiveImportError(err))
+		return
+	}
+
+	inspection := buildImageContractInspectionResponse(result.ImageRef, result.Contract)
+	notes := append([]string{}, result.Notes...)
+	notes = append(notes, inspection.Notes...)
+
+	writeJSON(w, http.StatusOK, archiveImageImportResponse{
+		GeneratedImageRef:  result.ImageRef,
+		BaseImage:          result.BaseImage,
+		DetectedRoot:       result.DetectedRoot,
+		DetectedLayout:     result.DetectedLayout,
+		Mode:               inspection.Mode,
+		OpenClawUser:       inspection.OpenClawUser,
+		OpenClawHome:       inspection.OpenClawHome,
+		BrowserMetricsPath: inspection.BrowserMetricsPath,
+		PrebuiltReady:      inspection.PrebuiltReady,
+		Notes:              notes,
+	})
+}
+
+func ExportInstanceBackup(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var inst database.Instance
+	if err := database.DB.First(&inst, id).Error; err != nil {
+		writeError(w, http.StatusNotFound, "Instance not found")
+		return
+	}
+
+	if !middleware.CanAccessInstance(r, inst.ID) {
+		writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+	user := middleware.GetUser(r)
+	if !canManageOwnedInstance(user, inst) {
+		writeError(w, http.StatusForbidden, "Only the owner or an admin can export this instance backup")
+		return
+	}
+
+	orch := orchestrator.Get()
+	if orch == nil || !orch.IsAvailable(r.Context()) {
+		writeError(w, http.StatusServiceUnavailable, "Orchestrator unavailable")
+		return
+	}
+
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
+	if format == "" {
+		format = "zip"
+	}
+
+	result, err := orch.ExportInstanceBackup(r.Context(), orchestrator.InstanceArchiveExportParams{
+		Name:        inst.Name,
+		DisplayName: inst.DisplayName,
+		Format:      format,
+	})
+	if err != nil {
+		log.Printf("Failed to export backup for instance %d (%s): %v", inst.ID, utils.SanitizeForLog(inst.Name), err)
+		writeError(w, http.StatusBadRequest, humanizeBackupExportError(err))
+		return
+	}
+	defer os.RemoveAll(result.CleanupPath)
+
+	file, err := os.Open(result.ArchivePath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to open generated backup archive")
+		return
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to inspect generated backup archive")
+		return
+	}
+
+	contentType := "application/zip"
+	if result.Format == "tgz" {
+		contentType = "application/gzip"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, result.ArchiveName))
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.Header().Set("X-Claworc-Archive-Root", result.RootDirectory)
+	w.Header().Set("X-Claworc-Archive-Format", result.Format)
+	http.ServeContent(w, r, result.ArchiveName, info.ModTime(), file)
+}
+
 func ListInstances(w http.ResponseWriter, r *http.Request) {
 	var instances []database.Instance
 	user := middleware.GetUser(r)
 
 	query := database.DB.Order("sort_order ASC, id ASC")
 	if user != nil && user.Role != "admin" {
-		// Non-admin users only see assigned instances
 		assignedIDs, err := database.GetUserInstances(user.ID)
-		if err != nil || len(assignedIDs) == 0 {
+		if err != nil {
 			writeJSON(w, http.StatusOK, []instanceResponse{})
 			return
 		}
-		query = query.Where("id IN ?", assignedIDs)
+		if len(assignedIDs) == 0 {
+			query = query.Where("owner_user_id = ?", user.ID)
+		} else {
+			query = query.Where("owner_user_id = ? OR id IN ?", user.ID, assignedIDs)
+		}
 	}
 
 	if err := query.Find(&instances).Error; err != nil {
@@ -415,7 +861,9 @@ func ListInstances(w http.ResponseWriter, r *http.Request) {
 			orchStatus = s
 		}
 		status := resolveStatus(&instances[i], orchStatus)
-		responses = append(responses, instanceToResponse(instances[i], status))
+		resp := instanceToResponse(instances[i], status)
+		sanitizeInstanceResponseForUser(&resp, user)
+		responses = append(responses, resp)
 	}
 
 	writeJSON(w, http.StatusOK, responses)
@@ -452,6 +900,12 @@ func saveInstanceAPIKeys(instanceID uint, apiKeys map[string]string) error {
 }
 
 func CreateInstance(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
 	var body instanceCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body")
@@ -461,6 +915,36 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 	if body.DisplayName == "" {
 		writeError(w, http.StatusBadRequest, "display_name is required")
 		return
+	}
+
+	if user.Role != "admin" {
+		if !canSelfProvision(user) {
+			writeError(w, http.StatusForbidden, "Self-service instance creation is disabled for this account")
+			return
+		}
+		if user.MaxInstances > 0 {
+			ownedCount, err := database.CountOwnedInstances(user.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to check instance quota")
+				return
+			}
+			if ownedCount >= int64(user.MaxInstances) {
+				writeError(w, http.StatusForbidden, fmt.Sprintf("Instance quota reached (%d/%d)", ownedCount, user.MaxInstances))
+				return
+			}
+		}
+		if body.ContainerImage != nil && strings.TrimSpace(*body.ContainerImage) != "" {
+			writeError(w, http.StatusForbidden, "Only admins can override the agent image")
+			return
+		}
+		if body.VNCResolution != nil && strings.TrimSpace(*body.VNCResolution) != "" {
+			writeError(w, http.StatusForbidden, "Only admins can override the VNC resolution")
+			return
+		}
+		if body.CPURequest != "" || body.CPULimit != "" || body.MemoryRequest != "" || body.MemoryLimit != "" || body.StorageHomebrew != "" || body.StorageHome != "" {
+			writeError(w, http.StatusForbidden, "Only admins can override container resource limits")
+			return
+		}
 	}
 
 	// Set defaults
@@ -529,26 +1013,15 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		userAgent = *body.UserAgent
 	}
 
-	// Serialize models config
-	var modelsConfigJSON string
+	mc := modelsConfig{}
 	if body.Models != nil {
-		if body.Models.Disabled == nil {
-			body.Models.Disabled = []string{}
-		}
-		if body.Models.Extra == nil {
-			body.Models.Extra = []string{}
-		}
-		b, _ := json.Marshal(body.Models)
-		modelsConfigJSON = string(b)
-	} else {
-		modelsConfigJSON = "{}"
+		mc = *body.Models
 	}
+	mc = normalizeModelsConfig(mc, body.DefaultModel)
+	modelsConfigJSONBytes, _ := json.Marshal(mc)
+	modelsConfigJSON := string(modelsConfigJSONBytes)
 
-	// Serialize enabled providers
-	enabledProviders := body.EnabledProviders
-	if enabledProviders == nil {
-		enabledProviders = []uint{}
-	}
+	enabledProviders := normalizeEnabledProviders(body.EnabledProviders, computeEffectiveModels(mc))
 	enabledProvidersJSON, _ := json.Marshal(enabledProviders)
 
 	// Compute next sort_order
@@ -559,6 +1032,7 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		Name:             name,
 		DisplayName:      body.DisplayName,
 		Status:           "creating",
+		OwnerUserID:      nil,
 		CPURequest:       body.CPURequest,
 		CPULimit:         body.CPULimit,
 		MemoryRequest:    body.MemoryRequest,
@@ -576,10 +1050,19 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		EnabledProviders: string(enabledProvidersJSON),
 		SortOrder:        maxSortOrder + 1,
 	}
+	if user.Role != "admin" {
+		inst.OwnerUserID = &user.ID
+	}
 
 	if err := database.DB.Create(&inst).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to create instance")
 		return
+	}
+
+	if inst.OwnerUserID != nil {
+		if err := database.AddUserInstance(*inst.OwnerUserID, inst.ID); err != nil {
+			log.Printf("Failed to assign owner %d to instance %d: %v", *inst.OwnerUserID, inst.ID, err)
+		}
 	}
 
 	// Save API keys to the new table
@@ -640,6 +1123,9 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 			"updated_at": time.Now().UTC(),
 		})
 
+		contract := resolveImageContract(ctx, orch, effectiveImage)
+		persistImageContract(inst.ID, contract)
+
 		// Push models, API keys, and gateway providers to the instance (waits for container ready)
 		database.DB.First(&inst, inst.ID)
 		if err := llmgateway.EnsureKeysForInstance(inst.ID, enabledProviders); err != nil {
@@ -652,10 +1138,12 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to get SSH connection for instance %d during configure: %v", inst.ID, err)
 			return
 		}
-		ConfigureInstance(ctx, orch, sshproxy.NewSSHInstance(sshClient), name, models, gatewayProviders, config.Cfg.LLMGatewayPort)
+		ConfigureInstance(ctx, orch, sshproxy.NewSSHInstance(sshClient, getEffectiveOpenClawUser(inst)), name, models, gatewayProviders, config.Cfg.LLMGatewayPort)
 	}()
 
-	writeJSON(w, http.StatusCreated, instanceToResponse(inst, "creating"))
+	resp := instanceToResponse(inst, "creating")
+	sanitizeInstanceResponseForUser(&resp, user)
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func GetInstance(w http.ResponseWriter, r *http.Request) {
@@ -683,6 +1171,7 @@ func GetInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	status := resolveStatus(&inst, orchStatus)
 	resp := instanceToResponse(inst, status)
+	sanitizeInstanceResponseForUser(&resp, middleware.GetUser(r))
 	if orch != nil {
 		if info, err := orch.GetInstanceImageInfo(r.Context(), inst.Name); err == nil && info != "" {
 			resp.LiveImageInfo = &info
@@ -700,12 +1189,12 @@ type instanceUpdateRequest struct {
 	UserAgent        *string            `json:"user_agent"`
 	AllowedSourceIPs *string            `json:"allowed_source_ips"` // admin only: comma-separated IPs/CIDRs
 	EnabledProviders *[]uint            `json:"enabled_providers"`  // admin only: LLM gateway provider IDs
-	DisplayName      *string            `json:"display_name"`      // admin only
-	CPURequest       *string            `json:"cpu_request"`       // admin only
-	CPULimit         *string            `json:"cpu_limit"`         // admin only
-	MemoryRequest    *string            `json:"memory_request"`    // admin only
-	MemoryLimit      *string            `json:"memory_limit"`      // admin only
-	VNCResolution    *string            `json:"vnc_resolution"`    // admin only
+	DisplayName      *string            `json:"display_name"`       // admin only
+	CPURequest       *string            `json:"cpu_request"`        // admin only
+	CPULimit         *string            `json:"cpu_limit"`          // admin only
+	MemoryRequest    *string            `json:"memory_request"`     // admin only
+	MemoryLimit      *string            `json:"memory_limit"`       // admin only
+	VNCResolution    *string            `json:"vnc_resolution"`     // admin only
 }
 
 var (
@@ -800,9 +1289,20 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	nextModels := parseModelsConfig(inst.ModelsConfig)
+	if body.Models != nil {
+		nextModels = *body.Models
+	}
+	nextDefaultModel := inst.DefaultModel
+	if body.DefaultModel != nil {
+		nextDefaultModel = *body.DefaultModel
+	}
+	nextModels = normalizeModelsConfig(nextModels, nextDefaultModel)
+	effectiveModels := computeEffectiveModels(nextModels)
+
 	// Update default model
 	if body.DefaultModel != nil {
-		database.DB.Model(&inst).Update("default_model", *body.DefaultModel)
+		database.DB.Model(&inst).Update("default_model", nextDefaultModel)
 	}
 
 	// Update timezone
@@ -833,14 +1333,8 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update models config
-	if body.Models != nil {
-		if body.Models.Disabled == nil {
-			body.Models.Disabled = []string{}
-		}
-		if body.Models.Extra == nil {
-			body.Models.Extra = []string{}
-		}
-		b, _ := json.Marshal(body.Models)
+	if body.Models != nil || body.DefaultModel != nil {
+		b, _ := json.Marshal(nextModels)
 		database.DB.Model(&inst).Update("models_config", string(b))
 	}
 
@@ -851,9 +1345,10 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "Only admins can configure LLM gateway providers")
 			return
 		}
-		b, _ := json.Marshal(*body.EnabledProviders)
+		normalizedProviders := normalizeEnabledProviders(*body.EnabledProviders, effectiveModels)
+		b, _ := json.Marshal(normalizedProviders)
 		database.DB.Model(&inst).Update("enabled_providers", string(b))
-		if err := llmgateway.EnsureKeysForInstance(inst.ID, *body.EnabledProviders); err != nil {
+		if err := llmgateway.EnsureKeysForInstance(inst.ID, normalizedProviders); err != nil {
 			log.Printf("Failed to ensure LLM gateway keys for instance %d: %s", inst.ID, utils.SanitizeForLog(err.Error()))
 		}
 	}
@@ -981,12 +1476,13 @@ func UpdateInstance(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Failed to get SSH connection for instance %d during configure: %v", instID, err)
 				return
 			}
-			ConfigureInstance(bgCtx, orch, sshproxy.NewSSHInstance(sshClient), instName, models, gatewayProviders, config.Cfg.LLMGatewayPort)
+			ConfigureInstance(bgCtx, orch, sshproxy.NewSSHInstance(sshClient, getEffectiveOpenClawUser(inst)), instName, models, gatewayProviders, config.Cfg.LLMGatewayPort)
 		}()
 	}
 
 	status := resolveStatus(&inst, orchStatus)
 	resp := instanceToResponse(inst, status)
+	sanitizeInstanceResponseForUser(&resp, middleware.GetUser(r))
 	if orch != nil {
 		if info, err := orch.GetInstanceImageInfo(r.Context(), inst.Name); err == nil && info != "" {
 			resp.LiveImageInfo = &info
@@ -1128,6 +1624,8 @@ func UpdateInstanceImage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("Image updated successfully for instance %d", instID)
+		contract := resolveImageContract(ctx, orch, effectiveImage)
+		persistImageContract(instID, contract)
 		database.DB.Model(&database.Instance{}).Where("id = ?", instID).Updates(map[string]interface{}{
 			"status":     "running",
 			"updated_at": time.Now().UTC(),
@@ -1149,6 +1647,14 @@ func DeleteInstance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Instance not found")
 		return
 	}
+	if !middleware.CanAccessInstance(r, inst.ID) {
+		writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+	if !canManageOwnedInstance(middleware.GetUser(r), inst) {
+		writeError(w, http.StatusForbidden, "Only the owner or an admin can delete this instance")
+		return
+	}
 
 	// Stop SSH tunnels and close connection before deleting
 	if SSHMgr != nil {
@@ -1167,6 +1673,7 @@ func DeleteInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete associated API keys and gateway keys
+	database.DB.Where("instance_id = ?", inst.ID).Delete(&database.UserInstance{})
 	database.DB.Where("instance_id = ?", inst.ID).Delete(&database.InstanceAPIKey{})
 	database.DB.Where("instance_id = ?", inst.ID).Delete(&database.LLMGatewayKey{})
 	database.DB.Delete(&inst)
@@ -1275,7 +1782,8 @@ func RestartInstance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if orch := orchestrator.Get(); orch != nil {
+	orch := orchestrator.Get()
+	if orch != nil {
 		if err := orch.RestartInstance(r.Context(), inst.Name); err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to restart instance: %v", err))
 			return
@@ -1286,6 +1794,35 @@ func RestartInstance(w http.ResponseWriter, r *http.Request) {
 		"status":     "restarting",
 		"updated_at": time.Now().UTC(),
 	})
+
+	if orch != nil {
+		instID := inst.ID
+		instName := inst.Name
+		go func() {
+			bgCtx := context.Background()
+			deadline := time.Now().Add(2 * time.Minute)
+			for time.Now().Before(deadline) {
+				status, err := orch.GetInstanceStatus(bgCtx, instName)
+				if err == nil && status == "running" {
+					if TunnelMgr != nil {
+						if err := TunnelMgr.StartTunnelsForInstance(bgCtx, instID, orch); err != nil {
+							log.Printf("Restart recovery pending for instance %d: %v", instID, err)
+							time.Sleep(2 * time.Second)
+							continue
+						}
+					}
+					database.DB.Model(&database.Instance{}).Where("id = ?", instID).Updates(map[string]interface{}{
+						"status":     "running",
+						"updated_at": time.Now().UTC(),
+					})
+					return
+				}
+				time.Sleep(2 * time.Second)
+			}
+			log.Printf("Restart recovery timed out for instance %d", instID)
+		}()
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "restarting"})
 }
 
@@ -1325,7 +1862,7 @@ func GetInstanceConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content, err := sshproxy.ReadFile(client, orchestrator.PathOpenClawConfig)
+	content, err := sshproxy.ReadFile(client, orchestrator.OpenClawConfigPath(getEffectiveOpenClawHome(inst)))
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "Instance must be running to read config")
 		return
@@ -1384,12 +1921,12 @@ func UpdateInstanceConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := sshproxy.WriteFile(client, orchestrator.PathOpenClawConfig, []byte(body.Config)); err != nil {
+	if err := sshproxy.WriteFile(client, orchestrator.OpenClawConfigPath(getEffectiveOpenClawHome(inst)), []byte(body.Config)); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to write config: %v", err))
 		return
 	}
 
-	instanceConn := sshproxy.NewSSHInstance(client)
+	instanceConn := sshproxy.NewSSHInstance(client, getEffectiveOpenClawUser(inst))
 	if _, stderr, code, err := instanceConn.ExecOpenclaw(r.Context(), "gateway", "stop"); err != nil || code != 0 {
 		log.Printf("Failed to restart gateway for instance %d: %v %s", inst.ID, err, stderr)
 	}
@@ -1397,6 +1934,94 @@ func UpdateInstanceConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"config":    body.Config,
 		"restarted": true,
+	})
+}
+
+func RunInstanceDoctor(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var inst database.Instance
+	if err := database.DB.First(&inst, id).Error; err != nil {
+		writeError(w, http.StatusNotFound, "Instance not found")
+		return
+	}
+
+	if !middleware.CanAccessInstance(r, inst.ID) {
+		writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+
+	var body struct {
+		Fix bool `json:"fix"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+	}
+
+	if body.Fix {
+		user := middleware.GetUser(r)
+		if user == nil || user.Role != "admin" {
+			writeError(w, http.StatusForbidden, "Only admins can apply doctor fixes")
+			return
+		}
+	}
+
+	orch := orchestrator.Get()
+	if orch == nil {
+		writeError(w, http.StatusServiceUnavailable, "No orchestrator available")
+		return
+	}
+
+	orchStatus, _ := orch.GetInstanceStatus(r.Context(), inst.Name)
+	if orchStatus != "running" {
+		writeError(w, http.StatusBadRequest, "Instance must be running to run doctor")
+		return
+	}
+
+	doctorArgs := []string{"doctor", "--non-interactive"}
+	if body.Fix {
+		doctorArgs = append(doctorArgs, "--fix")
+	}
+	commandText := "openclaw " + strings.Join(doctorArgs, " ")
+	shellCommand := fmt.Sprintf(
+		"export HOME=%s XDG_CONFIG_HOME=%s/.config NO_COLOR=1 TERM=dumb COLUMNS=120; su - %s -c %s",
+		sshproxy.ShellQuote(getEffectiveOpenClawHome(inst)),
+		sshproxy.ShellQuote(getEffectiveOpenClawHome(inst)),
+		sshproxy.ShellQuote(getEffectiveOpenClawUser(inst)),
+		sshproxy.ShellQuote(commandText),
+	)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	stdout, stderr, exitCode, err := orch.ExecInInstance(ctx, inst.Name, []string{"sh", "-lc", shellCommand})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("Doctor exec failed: %v", err))
+		return
+	}
+
+	combined := stdout
+	if stderr != "" {
+		if combined != "" && !strings.HasSuffix(combined, "\n") {
+			combined += "\n"
+		}
+		combined += stderr
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"command":         commandText,
+		"stdout":          stdout,
+		"stderr":          stderr,
+		"combined_output": combined,
+		"exit_code":       exitCode,
+		"fix_applied":     body.Fix,
 	})
 }
 
@@ -1411,6 +2036,32 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 	if err := database.DB.First(&src, id).Error; err != nil {
 		writeError(w, http.StatusNotFound, "Instance not found")
 		return
+	}
+	if !middleware.CanAccessInstance(r, src.ID) {
+		writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+	user := middleware.GetUser(r)
+	if !canManageOwnedInstance(user, src) {
+		writeError(w, http.StatusForbidden, "Only the owner or an admin can clone this instance")
+		return
+	}
+	if user != nil && user.Role != "admin" {
+		if !canSelfProvision(user) {
+			writeError(w, http.StatusForbidden, "Self-service instance creation is disabled for this account")
+			return
+		}
+		if user.MaxInstances > 0 {
+			ownedCount, err := database.CountOwnedInstances(user.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to check instance quota")
+				return
+			}
+			if ownedCount >= int64(user.MaxInstances) {
+				writeError(w, http.StatusForbidden, fmt.Sprintf("Instance quota reached (%d/%d)", ownedCount, user.MaxInstances))
+				return
+			}
+		}
 	}
 
 	// Generate clone display name and K8s-safe name
@@ -1444,6 +2095,7 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 		Name:            cloneName,
 		DisplayName:     cloneDisplayName,
 		Status:          "creating",
+		OwnerUserID:     src.OwnerUserID,
 		CPURequest:      src.CPURequest,
 		CPULimit:        src.CPULimit,
 		MemoryRequest:   src.MemoryRequest,
@@ -1452,6 +2104,8 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 		StorageHome:     src.StorageHome,
 		BraveAPIKey:     src.BraveAPIKey,
 		ContainerImage:  src.ContainerImage,
+		OpenClawUser:    src.OpenClawUser,
+		OpenClawHome:    src.OpenClawHome,
 		VNCResolution:   src.VNCResolution,
 		Timezone:        src.Timezone,
 		UserAgent:       src.UserAgent,
@@ -1464,6 +2118,11 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 	if err := database.DB.Create(&inst).Error; err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to create cloned instance")
 		return
+	}
+	if inst.OwnerUserID != nil {
+		if err := database.AddUserInstance(*inst.OwnerUserID, inst.ID); err != nil {
+			log.Printf("Failed to assign owner %d to cloned instance %d: %v", *inst.OwnerUserID, inst.ID, err)
+		}
 	}
 
 	// Copy API keys from source instance
@@ -1543,10 +2202,12 @@ func CloneInstance(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to get SSH connection for clone %d during configure: %v", inst.ID, err)
 			return
 		}
-		ConfigureInstance(ctx, orch, sshproxy.NewSSHInstance(sshClient), cloneName, models, nil, config.Cfg.LLMGatewayPort)
+		ConfigureInstance(ctx, orch, sshproxy.NewSSHInstance(sshClient, getEffectiveOpenClawUser(inst)), cloneName, models, nil, config.Cfg.LLMGatewayPort)
 	}()
 
-	writeJSON(w, http.StatusCreated, instanceToResponse(inst, "creating"))
+	resp := instanceToResponse(inst, "creating")
+	sanitizeInstanceResponseForUser(&resp, middleware.GetUser(r))
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func ReorderInstances(w http.ResponseWriter, r *http.Request) {

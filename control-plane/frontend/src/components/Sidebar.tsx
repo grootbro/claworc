@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useHealth } from "@/hooks/useHealth";
 import { useAuth } from "@/contexts/AuthContext";
+import { branding } from "@/branding";
 
 export default function Sidebar() {
   const location = useLocation();
@@ -43,25 +44,38 @@ export default function Sidebar() {
   return (
     <nav className="group fixed left-0 top-0 h-screen w-16 hover:w-56 transition-[width] duration-200 bg-white border-r border-gray-200 z-40 flex flex-col overflow-hidden">
       {/* Logo */}
-      <div className="relative flex items-center gap-2 px-2 h-16 border-b border-gray-200 shrink-0">
-        <img src="/favicon.svg" alt="Claworc" className="w-12 h-12 shrink-0" />
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden flex flex-col">
-          <span className="text-sm font-semibold text-gray-900">Claworc</span>
-          {orchLabel && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500">
+      <div className="flex items-center justify-between gap-2 px-2 h-16 border-b border-gray-200 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="relative shrink-0">
+            <img src="/favicon.svg" alt={branding.productName} className="w-12 h-12 shrink-0" />
+            {/* Collapsed orchestrator dot — bottom-right of logo */}
+            {orchLabel && (
               <span
-                className={`inline-block w-1.5 h-1.5 rounded-full ${orchOk ? "bg-green-500" : "bg-red-500"}`}
+                className={`absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full border-2 border-white ${orchOk ? "bg-green-500" : "bg-red-500"} group-hover:opacity-0 transition-opacity duration-200`}
               />
-              {orchLabel}
-            </span>
-          )}
+            )}
+          </div>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden flex flex-col min-w-0">
+            <span className="text-sm font-semibold text-gray-900">{branding.productShortName}</span>
+            {orchLabel && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500">
+                <span
+                  className={`inline-block w-1.5 h-1.5 rounded-full ${orchOk ? "bg-green-500" : "bg-red-500"}`}
+                />
+                {orchLabel}
+              </span>
+            )}
+          </div>
         </div>
-        {/* Collapsed orchestrator dot — bottom-right of logo */}
-        {orchLabel && (
-          <span
-            className={`absolute left-[50px] top-[50px] w-2.5 h-2.5 rounded-full border-2 border-white ${orchOk ? "bg-green-500" : "bg-red-500"} group-hover:opacity-0 transition-opacity duration-200`}
-          />
-        )}
+        <div className="opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0 shrink-0">
+          <div className="h-10 w-10 rounded-xl border border-amber-200 bg-amber-50 p-0.5 shadow-sm overflow-hidden">
+            <img
+              src="/ravefoxlab.jpg"
+              alt={`${branding.productName} lab`}
+              className="h-full w-full rounded-[10px] object-cover"
+            />
+          </div>
+        </div>
       </div>
 
       {/* New Instance */}

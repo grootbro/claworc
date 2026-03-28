@@ -84,6 +84,15 @@ export interface InstanceStats {
   memory_limit_bytes: number;
 }
 
+export interface InstanceDoctorResult {
+  command: string;
+  stdout: string;
+  stderr: string;
+  combined_output: string;
+  exit_code: number;
+  fix_applied: boolean;
+}
+
 export interface ProviderModelCost {
   input: number;
   output: number;
@@ -120,4 +129,27 @@ export interface InstanceConfig {
 export interface InstanceConfigUpdate {
   config: string;
   restarted: boolean;
+}
+
+export interface ImageContractInspection {
+  image_ref: string;
+  mode: string;
+  open_claw_user: string;
+  open_claw_home: string;
+  browser_metrics_path: string;
+  prebuilt_ready: boolean;
+  notes: string[];
+}
+
+export interface ArchiveImageImportResult {
+  generated_image_ref: string;
+  base_image: string;
+  detected_root: string;
+  detected_layout: string;
+  mode: string;
+  open_claw_user: string;
+  open_claw_home: string;
+  browser_metrics_path: string;
+  prebuilt_ready: boolean;
+  notes: string[];
 }

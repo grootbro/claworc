@@ -4,17 +4,69 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/gluk-w/claworc/control-plane/internal/sshproxy"
 )
 
-const PathOpenClawConfig = "/home/claworc/.openclaw/openclaw.json"
+const (
+	DefaultImageMode    = "managed"
+	DefaultOpenClawUser = "claworc"
+	DefaultOpenClawHome = "/home/claworc"
+	PathOpenClawConfig  = DefaultOpenClawHome + "/.openclaw/openclaw.json"
+)
+
+func EffectiveOpenClawUser(user string) string {
+	user = strings.TrimSpace(user)
+	if user == "" {
+		return DefaultOpenClawUser
+	}
+	return user
+}
+
+func EffectiveOpenClawHome(home string) string {
+	home = strings.TrimSpace(home)
+	if home == "" {
+		return DefaultOpenClawHome
+	}
+	return strings.TrimRight(home, "/")
+}
+
+func OpenClawConfigPath(home string) string {
+	return EffectiveOpenClawHome(home) + "/.openclaw/openclaw.json"
+}
+
+func DefaultBrowserMetricsPath(home string) string {
+	return EffectiveOpenClawHome(home) + "/chrome-data/DeferredBrowserMetrics"
+}
+
+func NormalizeImageContract(contract ImageContract) ImageContract {
+	contract.Mode = strings.TrimSpace(contract.Mode)
+	if contract.Mode == "" {
+		contract.Mode = DefaultImageMode
+	}
+
+	contract.OpenClawHome = EffectiveOpenClawHome(contract.OpenClawHome)
+
+	if strings.TrimSpace(contract.OpenClawUser) == "" && strings.HasPrefix(contract.OpenClawHome, "/home/") {
+		if user := strings.TrimPrefix(contract.OpenClawHome, "/home/"); user != "" && !strings.Contains(user, "/") {
+			contract.OpenClawUser = user
+		}
+	}
+	contract.OpenClawUser = EffectiveOpenClawUser(contract.OpenClawUser)
+
+	contract.BrowserMetricsPath = strings.TrimSpace(contract.BrowserMetricsPath)
+	if contract.BrowserMetricsPath == "" {
+		contract.BrowserMetricsPath = DefaultBrowserMetricsPath(contract.OpenClawHome)
+	}
+
+	return contract
+}
 
 // ExecFunc matches the ExecInInstance method signature.
 type ExecFunc func(ctx context.Context, name string, cmd []string) (string, string, int, error)
 
 func configureSSHAccess(ctx context.Context, execFn ExecFunc, name string, publicKey string) error {
-	// Ensure /root/.ssh directory exists with correct permissions
 	_, stderr, code, err := execFn(ctx, name, []string{"sh", "-c", "mkdir -p /root/.ssh && chmod 700 /root/.ssh"})
 	if err != nil {
 		return fmt.Errorf("create .ssh directory: %w", err)
@@ -23,7 +75,6 @@ func configureSSHAccess(ctx context.Context, execFn ExecFunc, name string, publi
 		return fmt.Errorf("create .ssh directory: %s", stderr)
 	}
 
-	// Write the public key to authorized_keys using base64 to safely pass content through exec
 	b64 := base64.StdEncoding.EncodeToString([]byte(publicKey))
 	cmd := []string{"sh", "-c", fmt.Sprintf("echo '%s' | base64 -d > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys", b64)}
 	_, stderr, code, err = execFn(ctx, name, cmd)
@@ -38,7 +89,6 @@ func configureSSHAccess(ctx context.Context, execFn ExecFunc, name string, publi
 }
 
 func updateInstanceConfig(ctx context.Context, execFn ExecFunc, factory sshproxy.InstanceFactory, name string, configJSON string) error {
-	// Write config file via exec (not an openclaw CLI call)
 	b64 := base64.StdEncoding.EncodeToString([]byte(configJSON))
 	cmd := []string{"sh", "-c", fmt.Sprintf("echo '%s' | base64 -d > %s", b64, PathOpenClawConfig)}
 	_, stderr, code, err := execFn(ctx, name, cmd)

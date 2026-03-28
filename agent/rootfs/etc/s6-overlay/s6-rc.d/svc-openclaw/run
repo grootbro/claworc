@@ -1,35 +1,80 @@
 #!/command/with-contenv bash
 
-export HOME=/home/claworc
+export OPENCLAW_USER="${CLAWORC_OPENCLAW_USER:-claworc}"
+export OPENCLAW_HOME="${CLAWORC_OPENCLAW_HOME:-/home/claworc}"
+export HOME="$OPENCLAW_HOME"
+export OPENCLAW_CONFIG_DIR="$OPENCLAW_HOME/.openclaw"
+export OPENCLAW_CONFIG_FILE="$OPENCLAW_CONFIG_DIR/openclaw.json"
+export OPENCLAW_TMPDIR=/tmp/openclaw
 
-# Initialize config on first run
-if [ ! -f "/home/claworc/.openclaw/openclaw.json" ]; then
+mkdir -p "$OPENCLAW_TMPDIR"
+chown "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_TMPDIR"
+chmod 700 "$OPENCLAW_TMPDIR"
+
+run_openclaw() {
+    s6-setuidgid "$OPENCLAW_USER" env HOME="$OPENCLAW_HOME" TMPDIR="$OPENCLAW_TMPDIR" openclaw "$@"
+}
+
+if [ ! -f "$OPENCLAW_CONFIG_FILE" ]; then
     echo "Initializing OpenClaw..."
-    mkdir -p /home/claworc/.openclaw
-    chown claworc:claworc /home/claworc/.openclaw
-    s6-setuidgid claworc openclaw doctor --fix || echo "Doctor finished with exit code $?"
+    mkdir -p "$OPENCLAW_CONFIG_DIR"
+    chown "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_CONFIG_DIR"
+    run_openclaw doctor --fix || echo "Doctor finished with exit code $?"
 
-    s6-setuidgid claworc openclaw config set logging.file /var/log/claworc/openclaw.log
+    run_openclaw config set logging.file /var/log/claworc/openclaw.log
     if [ -f "/defaults/browser.json" ]; then
-        s6-setuidgid claworc openclaw config set browser "$(cat /defaults/browser.json)" --json
+        run_openclaw config set browser "$(cat /defaults/browser.json)" --json
     fi
 fi
 
-# Always ensure gateway settings are correct (config may exist from a persisted volume
-# but be missing required gateway fields)
-s6-setuidgid claworc openclaw config set gateway.mode local
-s6-setuidgid claworc openclaw config set gateway.bind localhost
-s6-setuidgid claworc openclaw config set gateway.controlUi.dangerouslyDisableDeviceAuth true
+run_openclaw config set gateway.mode local
+run_openclaw config set gateway.bind loopback
+run_openclaw config set discovery.mdns.mode off
+run_openclaw config set agents.defaults.typingMode message
+run_openclaw config set gateway.controlUi.dangerouslyDisableDeviceAuth true
 
-# Set token if provided
+DEFAULT_SLACK_STREAM_BUFFER_SIZE=32
+DEFAULT_SLACK_LOADING_MESSAGES='["Thinking","Analyzing","Planning","Drafting","Polishing"]'
+DEFAULT_SLACK_MIN_LOADING_MS=6500
+
+apply_slack_stream_patch() {
+    local buffer_size loading_messages min_loading_ms patch_status
+
+    buffer_size="${OPENCLAW_SLACK_STREAM_BUFFER_SIZE:-$DEFAULT_SLACK_STREAM_BUFFER_SIZE}"
+    case "$buffer_size" in
+        ''|*[!0-9]*)
+            echo "Invalid OPENCLAW_SLACK_STREAM_BUFFER_SIZE=$buffer_size; using $DEFAULT_SLACK_STREAM_BUFFER_SIZE"
+            buffer_size="$DEFAULT_SLACK_STREAM_BUFFER_SIZE"
+            ;;
+    esac
+
+    loading_messages="${OPENCLAW_SLACK_LOADING_MESSAGES:-$DEFAULT_SLACK_LOADING_MESSAGES}"
+    min_loading_ms="${OPENCLAW_SLACK_MIN_LOADING_MS:-$DEFAULT_SLACK_MIN_LOADING_MS}"
+    case "$min_loading_ms" in
+        ''|*[!0-9]*)
+            echo "Invalid OPENCLAW_SLACK_MIN_LOADING_MS=$min_loading_ms; using $DEFAULT_SLACK_MIN_LOADING_MS"
+            min_loading_ms="$DEFAULT_SLACK_MIN_LOADING_MS"
+            ;;
+    esac
+
+    node /opt/openclaw-patches/patch-openclaw-slack-ux.mjs \
+        "$buffer_size" \
+        "$loading_messages" \
+        "$min_loading_ms"
+    patch_status=$?
+    if [ "$patch_status" -ne 0 ]; then
+        echo "Slack stream patch failed"
+        return "$patch_status"
+    fi
+}
+
+apply_slack_stream_patch
+
 if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
-    s6-setuidgid claworc openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
+    run_openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
 fi
 
-# Ensure claworc owns the config directory
-chown -R claworc:claworc /home/claworc/.openclaw
+chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_CONFIG_DIR"
 
-echo "Starting OpenClaw Gateway (foreground) as claworc..."
-# OpenClaw requires an open stdin stream or it exits.
-# Redirect stdout/stderr to log file for SSH-based log streaming.
-exec bash -c "tail -f /dev/null | s6-setuidgid claworc /usr/bin/openclaw gateway run >> /var/log/claworc/openclaw.log 2>&1"
+echo "Starting OpenClaw Gateway (foreground) as $OPENCLAW_USER..."
+exec s6-setuidgid "$OPENCLAW_USER" env HOME="$OPENCLAW_HOME" TMPDIR="$OPENCLAW_TMPDIR" sh -c 'tail -f /dev/null | openclaw gateway run >> /var/log/claworc/openclaw.log 2>&1'

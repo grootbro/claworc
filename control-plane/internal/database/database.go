@@ -63,10 +63,10 @@ func seedDefaults() error {
 		"default_memory_limit":         "4Gi",
 		"default_storage_homebrew":     "10Gi",
 		"default_storage_home":         "10Gi",
-		"default_container_image":      "glukw/openclaw-vnc-chromium:latest",
+		"default_container_image":      envOrDefault("CLAWORC_DEFAULT_CONTAINER_IMAGE", "glukw/openclaw-vnc-chromium:latest"),
 		"default_vnc_resolution":       "1920x1080",
 		"orchestrator_backend":         "auto",
-		"default_models":               "[]",
+		"default_models":               envOrDefault("CLAWORC_DEFAULT_MODELS", "[\"gemini/gemini-3-flash-preview\",\"gemini/gemini-2.5-flash\",\"openai/gpt-5.2\"]"),
 		"ssh_key_rotation_policy_days": "90",
 		"ssh_audit_retention_days":     "90",
 		"default_timezone":             "America/New_York",
@@ -84,6 +84,13 @@ func seedDefaults() error {
 	}
 
 	return nil
+}
+
+func envOrDefault(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func Close() error {
@@ -198,6 +205,27 @@ func SetUserInstances(userID uint, instanceIDs []uint) error {
 func IsUserAssignedToInstance(userID, instanceID uint) bool {
 	var count int64
 	DB.Model(&UserInstance{}).Where("user_id = ? AND instance_id = ?", userID, instanceID).Count(&count)
+	return count > 0
+}
+
+func AddUserInstance(userID, instanceID uint) error {
+	var link UserInstance
+	err := DB.Where("user_id = ? AND instance_id = ?", userID, instanceID).First(&link).Error
+	if err == nil {
+		return nil
+	}
+	return DB.Create(&UserInstance{UserID: userID, InstanceID: instanceID}).Error
+}
+
+func CountOwnedInstances(userID uint) (int64, error) {
+	var count int64
+	err := DB.Model(&Instance{}).Where("owner_user_id = ?", userID).Count(&count).Error
+	return count, err
+}
+
+func IsUserOwnerOfInstance(userID, instanceID uint) bool {
+	var count int64
+	DB.Model(&Instance{}).Where("id = ? AND owner_user_id = ?", instanceID, userID).Count(&count)
 	return count > 0
 }
 

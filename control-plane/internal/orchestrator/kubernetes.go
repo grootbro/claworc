@@ -72,6 +72,18 @@ func (k *KubernetesOrchestrator) BackendName() string {
 	return "kubernetes"
 }
 
+func (k *KubernetesOrchestrator) ResolveImageContract(_ context.Context, _ string) (ImageContract, error) {
+	return NormalizeImageContract(ImageContract{}), nil
+}
+
+func (k *KubernetesOrchestrator) BuildArchiveImage(_ context.Context, _ ArchiveImageBuildParams) (*ArchiveImageBuildResult, error) {
+	return nil, fmt.Errorf("archive image import is only supported on the Docker backend")
+}
+
+func (k *KubernetesOrchestrator) ExportInstanceBackup(_ context.Context, _ InstanceArchiveExportParams) (*InstanceArchiveExportResult, error) {
+	return nil, fmt.Errorf("instance backup export is only supported on the Docker backend")
+}
+
 func (k *KubernetesOrchestrator) ns() string {
 	return config.Cfg.K8sNamespace
 }
@@ -520,6 +532,12 @@ func buildPVC(name, ns, storage string) *corev1.PersistentVolumeClaim {
 func buildDeployment(params CreateParams, ns string) *appsv1.Deployment {
 	replicas := int32(1)
 	privileged := true
+	contract := NormalizeImageContract(ImageContract{
+		Mode:               params.ImageMode,
+		OpenClawUser:       params.OpenClawUser,
+		OpenClawHome:       params.OpenClawHome,
+		BrowserMetricsPath: params.BrowserMetricsPath,
+	})
 
 	var envVars []corev1.EnvVar
 	if parts := strings.SplitN(params.VNCResolution, "x", 2); len(parts) == 2 {
@@ -537,6 +555,11 @@ func buildDeployment(params CreateParams, ns string) *appsv1.Deployment {
 	if params.UserAgent != "" {
 		envVars = append(envVars, corev1.EnvVar{Name: "CHROMIUM_USER_AGENT", Value: params.UserAgent})
 	}
+	envVars = append(envVars,
+		corev1.EnvVar{Name: "CLAWORC_IMAGE_MODE", Value: contract.Mode},
+		corev1.EnvVar{Name: "CLAWORC_OPENCLAW_USER", Value: contract.OpenClawUser},
+		corev1.EnvVar{Name: "CLAWORC_OPENCLAW_HOME", Value: contract.OpenClawHome},
+	)
 
 	shmSize := resource.MustParse("2Gi")
 
@@ -571,7 +594,7 @@ func buildDeployment(params CreateParams, ns string) *appsv1.Deployment {
 							},
 						},
 						VolumeMounts: []corev1.VolumeMount{
-							{Name: "home-data", MountPath: "/home/claworc"},
+							{Name: "home-data", MountPath: contract.OpenClawHome},
 							{Name: "homebrew-data", MountPath: "/home/linuxbrew/.linuxbrew"},
 							{Name: "dshm", MountPath: "/dev/shm"},
 						},

@@ -347,7 +347,7 @@ export default function SettingsPage() {
                             <ProviderIcon provider={p.provider} size={22} />
                           ) : (
                             <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-500">
-                              {p.name[0].toUpperCase()}
+                              {p.name.charAt(0).toUpperCase()}
                             </span>
                           )}
                         </div>
@@ -441,13 +441,16 @@ export default function SettingsPage() {
           <h3 className="text-sm font-medium text-gray-900 mb-4">Agent Image</h3>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Default Container Image</label>
+              <label className="block text-xs text-gray-500 mb-1">Default Managed Agent Image</label>
               <input
                 type="text"
                 defaultValue={settings.default_container_image ?? ""}
                 onChange={(e) => setResources((r) => ({ ...r, default_container_image: e.target.value }))}
                 className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <p className="mt-2 text-xs text-gray-500">
+                This is the admin-managed base image used by default. For baked or migrated OpenClaw workspaces, choose <span className="font-medium text-gray-700">Prebuilt Image</span> in the instance create flow and enter a Claworc-compatible custom image there.
+              </p>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Default VNC Resolution</label>

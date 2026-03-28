@@ -1,5 +1,6 @@
 import client from "./client";
 import type {
+  ArchiveImageImportResult,
   Instance,
   InstanceDetail,
   InstanceCreatePayload,
@@ -7,6 +8,8 @@ import type {
   InstanceConfig,
   InstanceConfigUpdate,
   InstanceStats,
+  InstanceDoctorResult,
+  ImageContractInspection,
 } from "@/types/instance";
 
 export async function fetchInstances(): Promise<Instance[]> {
@@ -24,6 +27,60 @@ export async function createInstance(
 ): Promise<InstanceDetail> {
   const { data } = await client.post<InstanceDetail>("/instances", payload);
   return data;
+}
+
+export async function inspectInstanceImage(
+  containerImage: string,
+): Promise<ImageContractInspection> {
+  const { data } = await client.post<ImageContractInspection>(
+    "/instances/inspect-image",
+    { container_image: containerImage },
+  );
+  return data;
+}
+
+export async function importArchiveImage(
+  params: { file: File; baseImage?: string; displayName?: string },
+): Promise<ArchiveImageImportResult> {
+  const form = new FormData();
+  form.append("file", params.file);
+  if (params.baseImage) form.append("base_image", params.baseImage);
+  if (params.displayName) form.append("display_name", params.displayName);
+
+  const { data } = await client.post<ArchiveImageImportResult>(
+    "/instances/import-archive-image",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return data;
+}
+
+export async function exportInstanceBackup(
+  id: number,
+  format: "zip" | "tgz" = "zip",
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(
+    `/api/v1/instances/${id}/backup-archive?format=${encodeURIComponent(format)}`,
+    {
+      credentials: "include",
+    },
+  );
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || "Failed to export backup archive");
+    }
+    throw new Error((await response.text()) || "Failed to export backup archive");
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] || `instance-backup.${format === "tgz" ? "tgz" : "zip"}`;
+
+  return { blob, filename };
 }
 
 export async function updateInstance(
@@ -105,4 +162,15 @@ export async function fetchInstanceStats(
 
 export async function updateInstanceImage(id: number): Promise<void> {
   await client.post(`/instances/${id}/update-image`);
+}
+
+export async function runInstanceDoctor(
+  id: number,
+  fix: boolean = false,
+): Promise<InstanceDoctorResult> {
+  const { data } = await client.post<InstanceDoctorResult>(
+    `/instances/${id}/doctor`,
+    { fix },
+  );
+  return data;
 }

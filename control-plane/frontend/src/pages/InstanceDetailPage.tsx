@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, createElement } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { AlertTriangle, X, Maximize, ExternalLink } from "lucide-react";
+import { AlertTriangle, X, Maximize, ExternalLink, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import StatusBadge from "@/components/StatusBadge";
 import ActionButtons from "@/components/ActionButtons";
@@ -26,10 +26,12 @@ import {
   useRestartedToast,
   useInstanceStats,
   useUpdateInstanceImage,
+  useInstanceDoctor,
 } from "@/hooks/useInstances";
 import { useProviders } from "@/hooks/useProviders";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { fetchCatalogProviderDetail } from "@/api/llm";
+import { exportInstanceBackup } from "@/api/instances";
 import type { CatalogProviderDetail } from "@/api/llm";
 import ProviderIcon from "@/components/ProviderIcon";
 import ProviderModelSelector from "@/components/ProviderModelSelector";
@@ -40,7 +42,7 @@ import { useInstanceLogs } from "@/hooks/useInstanceLogs";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useDesktop } from "@/hooks/useDesktop";
 import { useChat } from "@/hooks/useChat";
-import type { InstanceUpdatePayload } from "@/types/instance";
+import type { InstanceDoctorResult } from "@/types/instance";
 import { buildSSHTooltip } from "@/utils/sshTooltip";
 
 type Tab = "chat" | "terminal" | "files" | "config" | "logs" | "settings";
@@ -82,6 +84,7 @@ export default function InstanceDetailPage() {
   const updateMutation = useUpdateInstance();
   const updateConfigMutation = useUpdateInstanceConfig();
   const updateImageMutation = useUpdateInstanceImage();
+  const doctorMutation = useInstanceDoctor();
 
   // Get initial tab from URL hash (supports #files:///path pattern)
   const getTabFromHash = (): Tab => {
@@ -152,6 +155,8 @@ export default function InstanceDetailPage() {
   const [pendingProviders, setPendingProviders] = useState<number[] | null>(null);
   const [pendingProviderModels, setPendingProviderModels] = useState<Record<number, string[]> | null>(null);
   const [pendingDefaultModel, setPendingDefaultModel] = useState<string>("");
+  const [doctorResult, setDoctorResult] = useState<InstanceDoctorResult | null>(null);
+  const [exportingBackupFormat, setExportingBackupFormat] = useState<"zip" | "tgz" | null>(null);
 
   // Update tab when hash changes
   useEffect(() => {
@@ -363,12 +368,106 @@ export default function InstanceDetailPage() {
     });
   };
 
+  const triggerBackupDownload = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+  };
+
+  const handleExportBackup = async (format: "zip" | "tgz") => {
+    const toastId = `backup-export-${format}`;
+    setExportingBackupFormat(format);
+    toast.custom(
+      createElement(AppToast, {
+        title: "Preparing backup...",
+        description: `Building a restore-ready .${format} archive from the current bot home.`,
+        status: "loading",
+        toastId,
+      }),
+      { id: toastId, duration: Infinity },
+    );
+
+    try {
+      const { blob, filename } = await exportInstanceBackup(instanceId, format);
+      triggerBackupDownload(blob, filename);
+      toast.custom(
+        createElement(AppToast, {
+          title: "Backup ready",
+          description: `${filename} downloaded. You can re-import it through Archive Import later.`,
+          status: "success",
+          toastId,
+        }),
+        { id: toastId, duration: 4000 },
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to export backup archive";
+      toast.custom(
+        createElement(AppToast, {
+          title: "Backup export failed",
+          description: message,
+          status: "error",
+          toastId,
+        }),
+        { id: toastId, duration: 5000 },
+      );
+    } finally {
+      setExportingBackupFormat(null);
+    }
+  };
   const formatBytes = (bytes: number): string => {
     if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}Gi`;
     if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)}Mi`;
     return `${bytes}B`;
   };
 
+  const runDoctor = (fix: boolean) => {
+    const toastId = fix ? "doctor-fix" : "doctor-run";
+    toast.custom(
+      createElement(AppToast, {
+        title: fix ? "Applying doctor fixes..." : "Running doctor...",
+        description: "Inspecting the live OpenClaw state inside this agent.",
+        status: "loading",
+        toastId,
+      }),
+      { id: toastId, duration: Infinity },
+    );
+
+    doctorMutation.mutate(
+      { id: instanceId, fix },
+      {
+        onSuccess: (result) => {
+          setDoctorResult(result);
+          toast.custom(
+            createElement(AppToast, {
+              title: fix ? "Doctor fixes applied" : "Doctor finished",
+              description: result.exit_code === 0 ? "Output updated below." : `Exited with code ${result.exit_code}.`,
+              status: result.exit_code === 0 ? "success" : "info",
+              toastId,
+            }),
+            { id: toastId, duration: 4000 },
+          );
+        },
+        onError: (err: unknown) => {
+          const axiosMsg = (err as any)?.response?.data?.error ?? (err as any)?.response?.data?.detail;
+          const message = axiosMsg ?? (err instanceof Error ? err.message : "Unknown error");
+          toast.custom(
+            createElement(AppToast, {
+              title: fix ? "Doctor fix failed" : "Doctor failed",
+              description: message,
+              status: "error",
+              toastId,
+            }),
+            { id: toastId, duration: 5000 },
+          );
+        },
+      },
+    );
+  };
   const handleSaveGatewayProviders = () => {
     if (pendingProviders === null) return;
 
@@ -542,11 +641,43 @@ export default function InstanceDetailPage() {
                       type="button"
                       onClick={handleUpdateImage}
                       disabled={updateImageMutation.isPending || instance.status !== "running"}
-                      className="ml-2 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="ml-2 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {updateImageMutation.isPending ? "Updating..." : "Update"}
                     </button>
                   )}
+                  <div className="mt-2">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${instance.has_image_override ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>
+                      {instance.has_image_override ? "Custom / Prebuilt image" : "Managed default image"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">
+                    {instance.has_image_override
+                      ? "This instance uses a custom image override. If the image exposes the Claworc OpenClaw labels, runtime user and home paths are auto-detected during create or image update."
+                      : "This instance uses the admin-managed default image from Settings."}
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleExportBackup("zip")}
+                      disabled={exportingBackupFormat !== null}
+                      className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Download size={14} />
+                      {exportingBackupFormat === "zip" ? "Preparing .zip..." : "Download Backup (.zip)"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportBackup("tgz")}
+                      disabled={exportingBackupFormat !== null}
+                      className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {exportingBackupFormat === "tgz" ? "Preparing .tgz..." : "Advanced: .tgz"}
+                    </button>
+                    <span className="text-xs text-gray-500">
+                      Exports the current OpenClaw home as a restore-ready archive for Archive Import.
+                    </span>
+                  </div>
                 </dd>
               </div>
 
@@ -822,15 +953,16 @@ export default function InstanceDetailPage() {
                     <p className="text-sm text-gray-400 italic">No providers enabled.</p>
                   ) : (
                     <div className="space-y-2">
-                      {(instance.enabled_providers ?? []).map((pid) => {
-                        const p = allProviders.find((x) => x.id === pid);
-                        if (!p) return null;
-                        const iconKey = p.provider ? catalogDetailMap[p.provider]?.icon_key ?? undefined : undefined;
-                        const displayModels: string[] = p.models.length > 0
-                          ? p.models.map((m) => m.id)
-                          : (instance.models.extra ?? [])
-                              .filter((m) => m.startsWith(`${p.key}/`))
-                              .map((m) => m.slice(`${p.key}/`.length));
+	                      {(instance.enabled_providers ?? []).map((pid) => {
+	                        const p = allProviders.find((x) => x.id === pid);
+	                        if (!p) return null;
+	                        const iconKey = p.provider ? catalogDetailMap[p.provider]?.icon_key ?? undefined : undefined;
+	                        const providerModels = p.models ?? [];
+	                        const displayModels: string[] = providerModels.length > 0
+	                          ? providerModels.map((m) => m.id)
+	                          : (instance.models.extra ?? [])
+	                              .filter((m) => m.startsWith(`${p.key}/`))
+	                              .map((m) => m.slice(`${p.key}/`.length));
                         return (
                           <div key={pid} className="bg-white rounded-lg border border-gray-200 px-4 py-3">
                             <div className="flex items-center gap-3">
@@ -838,7 +970,7 @@ export default function InstanceDetailPage() {
                                 {iconKey ? (
                                   <ProviderIcon provider={iconKey} size={18} />
                                 ) : (
-                                  <span className="text-xs font-semibold text-gray-500">{p.name[0].toUpperCase()}</span>
+	                                  <span className="text-xs font-semibold text-gray-500">{p.name.charAt(0).toUpperCase()}</span>
                                 )}
                               </div>
                               <span className="text-sm font-semibold text-gray-900">{p.name}</span>
@@ -909,6 +1041,61 @@ export default function InstanceDetailPage() {
             </div>
           )}
 
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-sm font-medium text-gray-900">OpenClaw Doctor</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Runs inside the live agent with the correct `claworc` home, so the report reflects the real bot state instead of root exec noise.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => runDoctor(false)}
+                  disabled={doctorMutation.isPending || instance.status !== "running"}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {doctorMutation.isPending && !doctorMutation.variables?.fix ? "Running..." : "Run doctor"}
+                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => runDoctor(true)}
+                    disabled={doctorMutation.isPending || instance.status !== "running"}
+                    className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {doctorMutation.isPending && doctorMutation.variables?.fix ? "Applying..." : "Run doctor --fix"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {instance.status !== "running" ? (
+              <p className="text-sm text-gray-400 italic">Start the instance to run doctor.</p>
+            ) : doctorResult ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <span className={`px-2 py-0.5 rounded font-medium ${doctorResult.exit_code === 0 ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                    exit {doctorResult.exit_code}
+                  </span>
+                  {doctorResult.fix_applied && (
+                    <span className="px-2 py-0.5 rounded font-medium bg-blue-100 text-blue-700">
+                      fixes applied
+                    </span>
+                  )}
+                  <code className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 break-all">
+                    {doctorResult.command}
+                  </code>
+                </div>
+                <pre className="overflow-x-auto overflow-y-auto max-h-[28rem] rounded-lg bg-gray-950 text-gray-100 text-xs leading-5 p-4 whitespace-pre-wrap break-words">
+                  {doctorResult.combined_output || "No output."}
+                </pre>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 italic">No doctor output yet.</p>
+            )}
+          </div>
         </div>
       )}
 

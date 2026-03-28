@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/gluk-w/claworc/control-plane/internal/utils"
 )
+
+const openClawURLBootstrap = `<script>(function(){try{var search=new URLSearchParams(window.location.search);if(!search.has("token")&&!search.has("gatewayUrl")&&!search.has("password"))return;var hash=new URLSearchParams(window.location.hash.replace(/^#/,""));["gatewayUrl","token","password","session"].forEach(function(key){var value=search.get(key);if(value&&!hash.has(key))hash.set(key,value)});if(hash.toString()){history.replaceState(null,"",window.location.pathname+window.location.search+"#"+hash.toString())}}catch(_){}})();</script>`
 
 // tunnelPortInfo holds local and remote port information for an active tunnel.
 type tunnelPortInfo struct {
@@ -127,8 +130,16 @@ func proxyToLocalPort(w http.ResponseWriter, r *http.Request, port int, path str
 			log.Printf("Tunnel proxy: error reading HTML body: %v", readErr)
 			return fmt.Errorf("error reading response body: %w", readErr)
 		}
-		baseTag := `<base href="` + rewriteBase[0] + `">`
-		body = bytes.Replace(body, []byte("<head>"), []byte("<head>"+baseTag), 1)
+		baseHref := rewriteBase[0]
+		if r.URL.RawQuery != "" {
+			baseHref += "?" + r.URL.RawQuery
+		}
+		baseTag := `<base href="` + html.EscapeString(baseHref) + `">`
+		replacement := "<head>" + baseTag
+		if r.URL.Query().Has("token") || r.URL.Query().Has("gatewayUrl") || r.URL.Query().Has("password") {
+			replacement += openClawURLBootstrap
+		}
+		body = bytes.Replace(body, []byte("<head>"), []byte(replacement), 1)
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 		w.WriteHeader(resp.StatusCode)
 		w.Write(body)

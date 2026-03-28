@@ -254,6 +254,40 @@ func TestProxyToLocalPort_StatusCodeForwarded(t *testing.T) {
 	}
 }
 
+func TestProxyToLocalPort_HTMLBasePreservesQuery(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, "<!DOCTYPE html><html><head><title>OpenClaw</title></head><body>ok</body></html>")
+	}))
+	defer backend.Close()
+
+	_, portStr, _ := net.SplitHostPort(strings.TrimPrefix(backend.URL, "http://"))
+	var port int
+	fmt.Sscanf(portStr, "%d", &port)
+
+	req := httptest.NewRequest(
+		"GET",
+		"/openclaw/1/?gatewayUrl=wss%3A%2F%2Fai.ravefox.dev%2Fopenclaw%2F1%2F&token=abc123&session=browser",
+		nil,
+	)
+	w := httptest.NewRecorder()
+
+	if err := proxyToLocalPort(w, req, port, "", "/openclaw/1/"); err != nil {
+		t.Fatalf("proxyToLocalPort returned error: %v", err)
+	}
+
+	body, _ := io.ReadAll(w.Result().Body)
+	got := string(body)
+	want := `<base href="/openclaw/1/?gatewayUrl=wss%3A%2F%2Fai.ravefox.dev%2Fopenclaw%2F1%2F&amp;token=abc123&amp;session=browser">`
+	if !strings.Contains(got, want) {
+		t.Fatalf("expected base tag %q in body, got %s", want, got)
+	}
+
+	if !strings.Contains(got, openClawURLBootstrap) {
+		t.Fatalf("expected OpenClaw bootstrap script in body, got %s", got)
+	}
+}
+
 // --- websocketProxyToLocalPort tests ---
 
 func TestWebsocketProxyToLocalPort_Success(t *testing.T) {

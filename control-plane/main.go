@@ -167,12 +167,29 @@ func main() {
 	if orch := orchestrator.Get(); orch != nil {
 		tunnelMgr.StartBackgroundManager(ctx, func(ctx context.Context) ([]uint, error) {
 			var instances []database.Instance
-			if err := database.DB.Where("status = ?", "running").Find(&instances).Error; err != nil {
+			if err := database.DB.Find(&instances).Error; err != nil {
 				return nil, err
 			}
-			ids := make([]uint, len(instances))
-			for i, inst := range instances {
-				ids[i] = inst.ID
+
+			ids := make([]uint, 0, len(instances))
+			for _, inst := range instances {
+				status, err := orch.GetInstanceStatus(ctx, inst.Name)
+				if err != nil {
+					log.Printf("Tunnel reconcile: failed to get orchestrator status for instance %d (%s): %v", inst.ID, inst.Name, err)
+					continue
+				}
+				if status != "running" {
+					continue
+				}
+
+				ids = append(ids, inst.ID)
+
+				if inst.Status != "running" {
+					database.DB.Model(&database.Instance{}).Where("id = ?", inst.ID).Updates(map[string]interface{}{
+						"status":     "running",
+						"updated_at": time.Now().UTC(),
+					})
+				}
 			}
 			return ids, nil
 		}, orch)
@@ -225,6 +242,7 @@ func main() {
 			r.Post("/instances/{id}/start", handlers.StartInstance)
 			r.Post("/instances/{id}/stop", handlers.StopInstance)
 			r.Post("/instances/{id}/restart", handlers.RestartInstance)
+			r.Post("/instances/{id}/doctor", handlers.RunInstanceDoctor)
 			r.Get("/instances/{id}/config", handlers.GetInstanceConfig)
 			r.Put("/instances/{id}/config", handlers.UpdateInstanceConfig)
 			r.Get("/instances/{id}/logs", handlers.StreamLogs)
@@ -235,6 +253,7 @@ func main() {
 			r.Get("/instances/{id}/tunnels", handlers.GetTunnelStatus)
 			r.Get("/instances/{id}/stats", handlers.GetInstanceStats)
 			r.Post("/instances/{id}/update-image", handlers.UpdateInstanceImage)
+			r.Get("/instances/{id}/backup-archive", handlers.ExportInstanceBackup)
 			r.Get("/ssh-fingerprint", handlers.GetSSHFingerprint)
 
 			// Files
@@ -263,6 +282,8 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireAdmin)
 
+				r.Post("/instances/inspect-image", handlers.InspectImageContract)
+				r.Post("/instances/import-archive-image", handlers.ImportArchiveImage)
 				r.Post("/instances", handlers.CreateInstance)
 				r.Post("/instances/{id}/clone", handlers.CloneInstance)
 				r.Delete("/instances/{id}", handlers.DeleteInstance)
@@ -311,6 +332,8 @@ func main() {
 	// OpenClaw control proxy (top-level, outside /api/v1/)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionStore))
+		r.HandleFunc("/openclaw/{id}", handlers.ControlProxy)
+		r.HandleFunc("/openclaw/{id}/", handlers.ControlProxy)
 		r.HandleFunc("/openclaw/{id}/*", handlers.ControlProxy)
 	})
 

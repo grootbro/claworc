@@ -166,6 +166,24 @@ export interface UsageTimePoint {
   cost_usd: number;
 }
 
+export interface UsageCoverage {
+  total_instances: number;
+  accessible_instances: number;
+  collected_instances: number;
+  skipped_instances: number;
+  skipped?: string[];
+}
+
+export interface UsageStatsMeta {
+  source: "agent" | "gateway" | string;
+  source_label: string;
+  count_label: string;
+  time_series_label: string;
+  resettable: boolean;
+  notes?: string[];
+  coverage?: UsageCoverage;
+}
+
 export interface UsageStatsResponse {
   by_instance: InstanceUsageStat[];
   by_provider: ProviderUsageStat[];
@@ -181,13 +199,16 @@ export interface UsageStatsResponse {
   instances: { id: number; name: string; display_name: string }[];
   providers: { id: number; key: string; name: string }[];
   granularity: "minute" | "hour" | "day";
+  meta: UsageStatsMeta;
 }
 
 export async function fetchUsageStats(params: {
   start_date?: string;
   end_date?: string;
+  source?: string;
   instance_id?: number;
   provider_id?: number;
+  provider_key?: string;
 }): Promise<UsageStatsResponse> {
   const { data } = await client.get<UsageStatsResponse>("/llm/usage/stats", { params });
   return data;

@@ -1,20 +1,31 @@
 package orchestrator
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
+	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/volume"
 	dockerclient "github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-units"
 	"github.com/gluk-w/claworc/control-plane/internal/config"
@@ -24,8 +35,12 @@ import (
 )
 
 const (
-	labelManagedBy = "claworc"
-	networkName    = "claworc"
+	labelManagedBy          = "claworc"
+	networkName             = "claworc"
+	browserMetricsTmpfsSize = 256 * 1024 * 1024
+	imageLabelMode          = "io.claworc.image-mode"
+	imageLabelOpenClawUser  = "io.claworc.openclaw-user"
+	imageLabelOpenClawHome  = "io.claworc.openclaw-home"
 )
 
 var volumeSuffixes = []string{"homebrew", "home"}
@@ -148,6 +163,709 @@ func (d *DockerOrchestrator) ensureImage(ctx context.Context, img string) error 
 	return nil
 }
 
+func contractFromCreateParams(params CreateParams) ImageContract {
+	return NormalizeImageContract(ImageContract{
+		Mode:               params.ImageMode,
+		OpenClawUser:       params.OpenClawUser,
+		OpenClawHome:       params.OpenClawHome,
+		BrowserMetricsPath: params.BrowserMetricsPath,
+	})
+}
+
+func homeFromImageEnv(env []string) string {
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "HOME=") {
+			home := strings.TrimSpace(strings.TrimPrefix(entry, "HOME="))
+			if home != "" && home != "/" {
+				return home
+			}
+		}
+	}
+	return ""
+}
+
+func (d *DockerOrchestrator) ResolveImageContract(ctx context.Context, imageRef string) (ImageContract, error) {
+	contract := ImageContract{}
+	if strings.TrimSpace(imageRef) == "" {
+		return NormalizeImageContract(contract), nil
+	}
+
+	if err := d.ensureImage(ctx, imageRef); err != nil {
+		return NormalizeImageContract(contract), err
+	}
+
+	inspect, _, err := d.client.ImageInspectWithRaw(ctx, imageRef)
+	if err != nil {
+		return NormalizeImageContract(contract), fmt.Errorf("inspect image %s: %w", imageRef, err)
+	}
+
+	if inspect.Config != nil {
+		labels := inspect.Config.Labels
+		if labels != nil {
+			contract.Mode = strings.TrimSpace(labels[imageLabelMode])
+			contract.OpenClawUser = strings.TrimSpace(labels[imageLabelOpenClawUser])
+			contract.OpenClawHome = strings.TrimSpace(labels[imageLabelOpenClawHome])
+		}
+		if contract.OpenClawHome == "" {
+			contract.OpenClawHome = homeFromImageEnv(inspect.Config.Env)
+		}
+		if contract.OpenClawUser == "" {
+			user := strings.TrimSpace(inspect.Config.User)
+			if i := strings.Index(user, ":"); i >= 0 {
+				user = user[:i]
+			}
+			if user != "" && user != "root" {
+				contract.OpenClawUser = user
+			}
+		}
+	}
+
+	if contract.OpenClawHome != "" && contract.OpenClawUser == "" && strings.HasPrefix(contract.OpenClawHome, "/home/") {
+		if user := path.Base(contract.OpenClawHome); user != "." && user != "/" && user != "home" && user != "" {
+			contract.OpenClawUser = user
+		}
+	}
+
+	return NormalizeImageContract(contract), nil
+}
+
+func defaultManagedImageRef() string {
+	if val, err := database.GetSetting("default_container_image"); err == nil && strings.TrimSpace(val) != "" {
+		return strings.TrimSpace(val)
+	}
+	return "glukw/openclaw-vnc-chromium:latest"
+}
+
+func sanitizeArchiveImageComponent(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "import"
+	}
+	value = regexp.MustCompile(`[^a-z0-9._-]+`).ReplaceAllString(value, "-")
+	value = regexp.MustCompile(`-+`).ReplaceAllString(value, "-")
+	value = strings.Trim(value, "-._")
+	if value == "" {
+		return "import"
+	}
+	if len(value) > 48 {
+		value = strings.Trim(value[:48], "-._")
+	}
+	if value == "" {
+		return "import"
+	}
+	return value
+}
+
+func archiveImageRef(displayName, archiveName string) string {
+	base := displayName
+	if strings.TrimSpace(base) == "" {
+		base = archiveName
+	}
+	slug := sanitizeArchiveImageComponent(base)
+	return fmt.Sprintf("claworc-import/%s:%s", slug, time.Now().UTC().Format("20060329-150405"))
+}
+
+func normalizeArchiveExportFormat(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "zip":
+		return "zip"
+	case "tgz", "tar.gz":
+		return "tgz"
+	default:
+		return ""
+	}
+}
+
+func archiveExportRootName(displayName, instanceName string) string {
+	base := displayName
+	if strings.TrimSpace(base) == "" {
+		base = instanceName
+	}
+	slug := sanitizeArchiveImageComponent(base)
+	return fmt.Sprintf("%s-backup-%s", slug, time.Now().UTC().Format("20060329-150405"))
+}
+
+func archiveExportFilename(rootDir, format string) string {
+	if format == "tgz" {
+		return rootDir + ".tgz"
+	}
+	return rootDir + ".zip"
+}
+
+func safeArchivePath(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(name, "/") {
+		return "", fmt.Errorf("absolute archive paths are not allowed")
+	}
+	cleaned := path.Clean("/" + strings.TrimPrefix(name, "./"))
+	rel := strings.TrimPrefix(cleaned, "/")
+	if rel == "." || rel == "" {
+		return "", nil
+	}
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", fmt.Errorf("archive path escapes destination: %s", name)
+	}
+	return rel, nil
+}
+
+func writeArchiveFile(target string, data []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		return err
+	}
+	if mode != 0 {
+		if err := os.Chmod(target, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractZipArchive(archivePath, dest string) error {
+	info, err := os.Stat(archivePath)
+	if err != nil {
+		return err
+	}
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	zr, err := zip.NewReader(file, info.Size())
+	if err != nil {
+		return fmt.Errorf("invalid zip archive: %w", err)
+	}
+
+	for _, f := range zr.File {
+		rel, err := safeArchivePath(f.Name)
+		if err != nil {
+			return err
+		}
+		if rel == "" {
+			continue
+		}
+		target := filepath.Join(dest, filepath.FromSlash(rel))
+		mode := f.Mode()
+		if mode&os.ModeSymlink != 0 {
+			return fmt.Errorf("archive symlinks are not supported: %s", rel)
+		}
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return err
+		}
+		if err := writeArchiveFile(target, data, mode.Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractTarStream(r io.Reader, dest string) error {
+	tr := tar.NewReader(r)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read tar archive: %w", err)
+		}
+		rel, err := safeArchivePath(hdr.Name)
+		if err != nil {
+			return err
+		}
+		if rel == "" {
+			continue
+		}
+		target := filepath.Join(dest, filepath.FromSlash(rel))
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			data, err := io.ReadAll(tr)
+			if err != nil {
+				return err
+			}
+			if err := writeArchiveFile(target, data, os.FileMode(hdr.Mode).Perm()); err != nil {
+				return err
+			}
+		case tar.TypeSymlink, tar.TypeLink:
+			return fmt.Errorf("archive symlinks are not supported: %s", rel)
+		default:
+			return fmt.Errorf("unsupported archive entry type for %s", rel)
+		}
+	}
+}
+
+func extractArchive(archivePath, archiveName, dest string) error {
+	name := strings.ToLower(strings.TrimSpace(archiveName))
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	switch {
+	case strings.HasSuffix(name, ".zip"):
+		return extractZipArchive(archivePath, dest)
+	case strings.HasSuffix(name, ".tar.gz"), strings.HasSuffix(name, ".tgz"):
+		gr, err := gzip.NewReader(file)
+		if err != nil {
+			return fmt.Errorf("invalid gzip archive: %w", err)
+		}
+		defer gr.Close()
+		return extractTarStream(gr, dest)
+	case strings.HasSuffix(name, ".tar"):
+		return extractTarStream(file, dest)
+	default:
+		return fmt.Errorf("unsupported archive format: %s", archiveName)
+	}
+}
+
+func hasOpenClawDir(root string) bool {
+	info, err := os.Stat(filepath.Join(root, ".openclaw"))
+	return err == nil && info.IsDir()
+}
+
+func dirDepth(rel string) int {
+	if rel == "." || rel == "" {
+		return 0
+	}
+	return len(strings.Split(filepath.ToSlash(rel), "/"))
+}
+
+func detectArchiveHomeRoot(extractDir string) (string, string, string, []string, error) {
+	if hasOpenClawDir(extractDir) {
+		return extractDir, "archive_root", "archive root", []string{"Archive root already contains .openclaw and will be copied as the instance home."}, nil
+	}
+
+	entries, err := os.ReadDir(extractDir)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	if len(entries) == 1 && entries[0].IsDir() {
+		candidate := filepath.Join(extractDir, entries[0].Name())
+		if hasOpenClawDir(candidate) {
+			return candidate, "top_level_directory", entries[0].Name(), []string{fmt.Sprintf("Using top-level directory %q as the imported OpenClaw home.", entries[0].Name())}, nil
+		}
+	}
+
+	var found []string
+	err = filepath.WalkDir(extractDir, func(current string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(extractDir, current)
+		if err != nil {
+			return err
+		}
+		if dirDepth(rel) > 3 {
+			return filepath.SkipDir
+		}
+		if rel != "." && hasOpenClawDir(current) {
+			found = append(found, current)
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	if len(found) == 1 {
+		rel, _ := filepath.Rel(extractDir, found[0])
+		return found[0], "nested_directory", rel, []string{fmt.Sprintf("Detected nested OpenClaw home at %q inside the archive.", filepath.ToSlash(rel))}, nil
+	}
+	if len(found) > 1 {
+		return "", "", "", nil, fmt.Errorf("archive contains multiple possible OpenClaw homes; keep only one .openclaw root")
+	}
+	return "", "", "", nil, fmt.Errorf("archive must contain a .openclaw directory at the root or inside a single top-level folder")
+}
+
+func copyDirContents(srcRoot, dstRoot string) error {
+	return filepath.Walk(srcRoot, func(current string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(srcRoot, current)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		target := filepath.Join(dstRoot, rel)
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not supported in imported archives: %s", rel)
+		}
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(current)
+		if err != nil {
+			return err
+		}
+		return writeArchiveFile(target, data, info.Mode().Perm())
+	})
+}
+
+func buildContextTar(buildDir string) (*bytes.Buffer, error) {
+	buf := &bytes.Buffer{}
+	tw := tar.NewWriter(buf)
+	err := filepath.Walk(buildDir, func(current string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(buildDir, current)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not supported in build context: %s", rel)
+		}
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		header.Name = rel
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		f, err := os.Open(current)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if _, err := io.Copy(tw, f); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		tw.Close()
+		return nil, err
+	}
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
+func createZipArchive(srcRoot, archivePath string) error {
+	file, err := os.Create(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	zw := zip.NewWriter(file)
+	defer zw.Close()
+
+	rootParent := filepath.Dir(srcRoot)
+	return filepath.Walk(srcRoot, func(current string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not supported in exported archives: %s", current)
+		}
+		rel, err := filepath.Rel(rootParent, current)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = rel
+		if info.IsDir() {
+			header.Name += "/"
+			header.Method = zip.Store
+		} else {
+			header.Method = zip.Deflate
+		}
+		writer, err := zw.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		f, err := os.Open(current)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if _, err := io.Copy(writer, f); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func createTarGzArchive(srcRoot, archivePath string) error {
+	file, err := os.Create(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	gzw := gzip.NewWriter(file)
+	defer gzw.Close()
+
+	tw := tar.NewWriter(gzw)
+	defer tw.Close()
+
+	rootParent := filepath.Dir(srcRoot)
+	return filepath.Walk(srcRoot, func(current string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not supported in exported archives: %s", current)
+		}
+		rel, err := filepath.Rel(rootParent, current)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		header.Name = rel
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		f, err := os.Open(current)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if _, err := io.Copy(tw, f); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func consumeDockerBuildOutput(r io.Reader) error {
+	type buildMessage struct {
+		Stream      string `json:"stream"`
+		Error       string `json:"error"`
+		ErrorDetail struct {
+			Message string `json:"message"`
+		} `json:"errorDetail"`
+	}
+
+	dec := json.NewDecoder(r)
+	var streamTail strings.Builder
+	for {
+		var msg buildMessage
+		if err := dec.Decode(&msg); err == io.EOF {
+			break
+		} else if err != nil {
+			return fmt.Errorf("decode docker build output: %w", err)
+		}
+		if msg.Stream != "" {
+			streamTail.WriteString(msg.Stream)
+		}
+		if msg.ErrorDetail.Message != "" {
+			return fmt.Errorf("%s", strings.TrimSpace(msg.ErrorDetail.Message))
+		}
+		if msg.Error != "" {
+			return fmt.Errorf("%s", strings.TrimSpace(msg.Error))
+		}
+	}
+	return nil
+}
+
+func (d *DockerOrchestrator) BuildArchiveImage(ctx context.Context, params ArchiveImageBuildParams) (*ArchiveImageBuildResult, error) {
+	if strings.TrimSpace(params.ArchivePath) == "" || strings.TrimSpace(params.ArchiveName) == "" {
+		return nil, fmt.Errorf("archive path and name are required")
+	}
+
+	baseImage := strings.TrimSpace(params.BaseImage)
+	if baseImage == "" {
+		baseImage = defaultManagedImageRef()
+	}
+
+	baseContract, err := d.ResolveImageContract(ctx, baseImage)
+	if err != nil {
+		return nil, err
+	}
+
+	tempDir, err := os.MkdirTemp("", "claworc-archive-image-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tempDir)
+
+	extractDir := filepath.Join(tempDir, "extract")
+	buildDir := filepath.Join(tempDir, "build")
+	preparedHomeDir := filepath.Join(buildDir, "prepared-home")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(preparedHomeDir, 0o755); err != nil {
+		return nil, err
+	}
+
+	if err := extractArchive(params.ArchivePath, params.ArchiveName, extractDir); err != nil {
+		return nil, err
+	}
+
+	sourceRoot, detectedLayout, sourceLabel, notes, err := detectArchiveHomeRoot(extractDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := copyDirContents(sourceRoot, preparedHomeDir); err != nil {
+		return nil, err
+	}
+
+	dockerfile := fmt.Sprintf(`FROM %s
+LABEL io.claworc.image-mode="prebuilt" \
+      io.claworc.openclaw-user=%q \
+      io.claworc.openclaw-home=%q
+
+COPY prepared-home/ %s/
+`, baseImage, baseContract.OpenClawUser, baseContract.OpenClawHome, baseContract.OpenClawHome)
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(buildDir, ".dockerignore"), []byte(""), 0o644); err != nil {
+		return nil, err
+	}
+
+	imageRef := archiveImageRef(params.DisplayName, params.ArchiveName)
+	contextTar, err := buildContextTar(buildDir)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := d.client.ImageBuild(ctx, bytes.NewReader(contextTar.Bytes()), dockertypes.ImageBuildOptions{
+		Tags:        []string{imageRef},
+		Remove:      true,
+		ForceRemove: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build imported image: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := consumeDockerBuildOutput(resp.Body); err != nil {
+		return nil, fmt.Errorf("build imported image: %w", err)
+	}
+
+	contract, err := d.ResolveImageContract(ctx, imageRef)
+	if err != nil {
+		return nil, err
+	}
+	notes = append(notes, fmt.Sprintf("Built local prebuilt image %q from archive %q.", imageRef, params.ArchiveName))
+
+	return &ArchiveImageBuildResult{
+		ImageRef:       imageRef,
+		BaseImage:      baseImage,
+		DetectedRoot:   sourceLabel,
+		DetectedLayout: detectedLayout,
+		Contract:       contract,
+		Notes:          notes,
+	}, nil
+}
+
+func (d *DockerOrchestrator) ExportInstanceBackup(ctx context.Context, params InstanceArchiveExportParams) (*InstanceArchiveExportResult, error) {
+	format := normalizeArchiveExportFormat(params.Format)
+	if format == "" {
+		return nil, fmt.Errorf("unsupported archive format: %s", params.Format)
+	}
+	if strings.TrimSpace(params.Name) == "" {
+		return nil, fmt.Errorf("instance name is required")
+	}
+
+	homeVolume := d.volumeName(params.Name, "home")
+	if _, err := d.client.VolumeInspect(ctx, homeVolume); err != nil {
+		if dockerclient.IsErrNotFound(err) {
+			return nil, fmt.Errorf("instance home volume not found")
+		}
+		return nil, fmt.Errorf("inspect home volume: %w", err)
+	}
+
+	tempDir, err := os.MkdirTemp("", "claworc-export-*")
+	if err != nil {
+		return nil, err
+	}
+
+	rootDir := archiveExportRootName(params.DisplayName, params.Name)
+	stagingParent := filepath.Join(tempDir, "staged")
+	stagedRoot := filepath.Join(stagingParent, rootDir)
+	if err := os.MkdirAll(stagingParent, 0o755); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, err
+	}
+
+	if err := d.copyVolumeToDirectory(ctx, homeVolume, stagingParent, rootDir); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, err
+	}
+	if !hasOpenClawDir(stagedRoot) {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("instance home does not contain a .openclaw directory")
+	}
+
+	archiveName := archiveExportFilename(rootDir, format)
+	archivePath := filepath.Join(tempDir, archiveName)
+
+	switch format {
+	case "zip":
+		err = createZipArchive(stagedRoot, archivePath)
+	case "tgz":
+		err = createTarGzArchive(stagedRoot, archivePath)
+	}
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return nil, err
+	}
+
+	return &InstanceArchiveExportResult{
+		ArchivePath:   archivePath,
+		ArchiveName:   archiveName,
+		RootDirectory: rootDir,
+		Format:        format,
+		CleanupPath:   tempDir,
+	}, nil
+}
+
 func (d *DockerOrchestrator) CreateInstance(ctx context.Context, params CreateParams) error {
 	progress := params.OnProgress
 	if progress == nil {
@@ -158,6 +876,16 @@ func (d *DockerOrchestrator) CreateInstance(ctx context.Context, params CreatePa
 	if err := d.ensureImage(ctx, params.ContainerImage); err != nil {
 		return err
 	}
+
+	progress("Inspecting image contract...")
+	contract, err := d.ResolveImageContract(ctx, params.ContainerImage)
+	if err != nil {
+		return err
+	}
+	params.ImageMode = contract.Mode
+	params.OpenClawUser = contract.OpenClawUser
+	params.OpenClawHome = contract.OpenClawHome
+	params.BrowserMetricsPath = contract.BrowserMetricsPath
 
 	// Create volumes
 	progress("Creating volumes...")
@@ -232,6 +960,79 @@ func (d *DockerOrchestrator) copyVolume(ctx context.Context, srcVol, dstVol stri
 	return nil
 }
 
+func (d *DockerOrchestrator) copyVolumeToDirectory(ctx context.Context, srcVol, dstDir, rootDir string) error {
+	_ = d.ensureImage(ctx, "alpine:latest")
+
+	containerCfg := &container.Config{
+		Image: "alpine:latest",
+		Cmd: []string{
+			"sh",
+			"-c",
+			fmt.Sprintf("mkdir -p /out/%s && cp -aL /src/. /out/%s/ && test -d /out/%s/.openclaw", rootDir, rootDir, rootDir),
+		},
+	}
+	hostCfg := &container.HostConfig{
+		Mounts: []mount.Mount{
+			{Type: mount.TypeVolume, Source: srcVol, Target: "/src", ReadOnly: true},
+		},
+	}
+
+	resp, err := d.client.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, "")
+	if err != nil {
+		return fmt.Errorf("create export container: %w", err)
+	}
+	defer d.client.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+
+	if err := d.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		return fmt.Errorf("start export container: %w", err)
+	}
+
+	statusCh, errCh := d.client.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("wait for export container: %w", err)
+		}
+	case status := <-statusCh:
+		if status.StatusCode != 0 {
+			logs := d.readContainerLogs(ctx, resp.ID)
+			if logs != "" {
+				return fmt.Errorf("export staging failed: %s", logs)
+			}
+			return fmt.Errorf("export staging failed with exit code %d", status.StatusCode)
+		}
+	}
+
+	reader, _, err := d.client.CopyFromContainer(ctx, resp.ID, "/out/"+rootDir)
+	if err != nil {
+		return fmt.Errorf("copy staged backup from container: %w", err)
+	}
+	defer reader.Close()
+
+	if err := extractTarStream(reader, dstDir); err != nil {
+		return fmt.Errorf("extract staged backup: %w", err)
+	}
+	return nil
+}
+
+func (d *DockerOrchestrator) readContainerLogs(ctx context.Context, containerID string) string {
+	reader, err := d.client.ContainerLogs(ctx, containerID, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+	})
+	if err != nil {
+		return ""
+	}
+	defer reader.Close()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if _, err := stdcopy.StdCopy(&stdout, &stderr, reader); err != nil {
+		return strings.TrimSpace(stdout.String() + "\n" + stderr.String())
+	}
+	return strings.TrimSpace(stdout.String() + "\n" + stderr.String())
+}
+
 func (d *DockerOrchestrator) DeleteInstance(ctx context.Context, name string) error {
 	// Remove container
 	err := d.client.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
@@ -281,18 +1082,34 @@ func (d *DockerOrchestrator) UpdateImage(ctx context.Context, name string, param
 		return fmt.Errorf("remove container %s: %w", name, err)
 	}
 
+	contract, err := d.ResolveImageContract(ctx, params.ContainerImage)
+	if err != nil {
+		return err
+	}
+	params.ImageMode = contract.Mode
+	params.OpenClawUser = contract.OpenClawUser
+	params.OpenClawHome = contract.OpenClawHome
+	params.BrowserMetricsPath = contract.BrowserMetricsPath
 	// Recreate the container with the same config but fresh image
 	return d.createContainer(ctx, params)
 }
 
 // createContainer builds and starts a container from CreateParams (without pulling or creating volumes).
 func (d *DockerOrchestrator) createContainer(ctx context.Context, params CreateParams) error {
+	contract := contractFromCreateParams(params)
 	var env []string
 	if parts := strings.SplitN(params.VNCResolution, "x", 2); len(parts) == 2 {
 		env = append(env, "DISPLAY_WIDTH="+parts[0], "DISPLAY_HEIGHT="+parts[1])
 	}
+	bonjourDisabled := false
 	for k, v := range params.EnvVars {
+		if k == "OPENCLAW_DISABLE_BONJOUR" {
+			bonjourDisabled = true
+		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	if !bonjourDisabled {
+		env = append(env, "OPENCLAW_DISABLE_BONJOUR=1")
 	}
 	if params.Timezone != "" {
 		env = append(env, fmt.Sprintf("TZ=%s", params.Timezone))
@@ -300,10 +1117,22 @@ func (d *DockerOrchestrator) createContainer(ctx context.Context, params CreateP
 	if params.UserAgent != "" {
 		env = append(env, fmt.Sprintf("CHROMIUM_USER_AGENT=%s", params.UserAgent))
 	}
+	env = append(env,
+		fmt.Sprintf("CLAWORC_IMAGE_MODE=%s", contract.Mode),
+		fmt.Sprintf("CLAWORC_OPENCLAW_USER=%s", contract.OpenClawUser),
+		fmt.Sprintf("CLAWORC_OPENCLAW_HOME=%s", contract.OpenClawHome),
+	)
 
 	mounts := []mount.Mount{
 		{Type: mount.TypeVolume, Source: d.volumeName(params.Name, "homebrew"), Target: "/home/linuxbrew/.linuxbrew"},
-		{Type: mount.TypeVolume, Source: d.volumeName(params.Name, "home"), Target: "/home/claworc"},
+		{Type: mount.TypeVolume, Source: d.volumeName(params.Name, "home"), Target: contract.OpenClawHome},
+		{
+			Type:   mount.TypeTmpfs,
+			Target: contract.BrowserMetricsPath,
+			TmpfsOptions: &mount.TmpfsOptions{
+				SizeBytes: browserMetricsTmpfsSize,
+			},
+		},
 	}
 
 	var nanoCPUs int64
@@ -383,6 +1212,9 @@ func (d *DockerOrchestrator) GetInstanceStatus(ctx context.Context, name string)
 
 	switch status {
 	case "running":
+		if inspect.State.Health == nil {
+			return "running", nil
+		}
 		switch health {
 		case "healthy":
 			return "running", nil

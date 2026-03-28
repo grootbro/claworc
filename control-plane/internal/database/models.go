@@ -27,6 +27,8 @@ type Instance struct {
 	StorageHome      string    `gorm:"default:10Gi" json:"storage_home"`
 	BraveAPIKey      string    `json:"-"`
 	ContainerImage   string    `json:"container_image"`
+	OpenClawUser     string    `gorm:"default:''" json:"-"`
+	OpenClawHome     string    `gorm:"default:''" json:"-"`
 	VNCResolution    string    `json:"vnc_resolution"`
 	GatewayToken     string    `json:"-"`
 	ModelsConfig     string    `gorm:"type:text;default:'{}'" json:"-"` // JSON: {"disabled":["model"],"extra":["model"]}
@@ -36,6 +38,7 @@ type Instance struct {
 	EnabledProviders string    `gorm:"type:text;default:'[]'" json:"-"`                // JSON array of LLMProvider IDs enabled for this instance
 	Timezone         string    `gorm:"default:''" json:"timezone"`
 	UserAgent        string    `gorm:"default:''" json:"user_agent"`
+	OwnerUserID      *uint     `gorm:"index" json:"owner_user_id"`
 	SortOrder        int       `gorm:"not null;default:0" json:"sort_order"`
 	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time `gorm:"autoUpdateTime" json:"updated_at"`
@@ -129,12 +132,15 @@ type Setting struct {
 }
 
 type User struct {
-	ID           uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Username     string    `gorm:"uniqueIndex;not null;size:64" json:"username"`
-	PasswordHash string    `gorm:"not null" json:"-"`
-	Role         string    `gorm:"not null;default:user" json:"role"`
-	CreatedAt    time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	ID                 uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Username           string    `gorm:"uniqueIndex;not null;size:64" json:"username"`
+	PasswordHash       string    `gorm:"not null" json:"-"`
+	Role               string    `gorm:"not null;default:user" json:"role"`
+	CanCreateInstances bool      `gorm:"not null;default:false" json:"can_create_instances"`
+	CanLaunchControlUI bool      `gorm:"not null;default:false" json:"can_launch_control_ui"`
+	MaxInstances       int       `gorm:"not null;default:0" json:"max_instances"`
+	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 type UserInstance struct {

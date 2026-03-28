@@ -18,6 +18,7 @@ import {
   reorderInstances,
   fetchInstanceStats,
   updateInstanceImage,
+  runInstanceDoctor,
 } from "@/api/instances";
 import type { Instance, InstanceCreatePayload, InstanceUpdatePayload } from "@/types/instance";
 
@@ -141,6 +142,18 @@ export function useUpdateInstanceImage() {
   });
 }
 
+export function useInstanceDoctor() {
+  return useMutation({
+    mutationFn: ({ id, fix = false }: { id: number; fix?: boolean }) =>
+      runInstanceDoctor(id, fix),
+    onError: (error: any, variables) => {
+      errorToast(
+        variables.fix ? "Failed to apply doctor fixes" : "Failed to run doctor",
+        error,
+      );
+    },
+  });
+}
 /** Show a "Restarted <name>" toast when any instance transitions from "restarting" → "running". */
 export function useRestartedToast(instances: Instance[] | undefined) {
   const prevRef = useRef<Map<number, string>>(new Map());

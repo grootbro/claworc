@@ -23,19 +23,27 @@ func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// SSHInstance implements Instance over a live SSH connection.
-// All openclaw CLI calls are run as `su - claworc -c 'openclaw <args...>'`.
-type SSHInstance struct{ client *gossh.Client }
+const defaultOpenClawUser = "claworc"
 
-// NewSSHInstance wraps an established SSH client as an Instance.
-func NewSSHInstance(client *gossh.Client) *SSHInstance {
-	return &SSHInstance{client: client}
+// SSHInstance implements Instance over a live SSH connection.
+// All remote openclaw CLI calls are run as `su - <user> -c 'openclaw <args...>'` over SSH.
+type SSHInstance struct {
+	client       *gossh.Client
+	openclawUser string
 }
 
-// ExecOpenclaw runs `su - claworc -c 'openclaw <args...>'` over SSH.
+// NewSSHInstance wraps an established SSH client as an Instance.
+func NewSSHInstance(client *gossh.Client, openclawUser ...string) *SSHInstance {
+	user := defaultOpenClawUser
+	if len(openclawUser) > 0 && strings.TrimSpace(openclawUser[0]) != "" {
+		user = strings.TrimSpace(openclawUser[0])
+	}
+	return &SSHInstance{client: client, openclawUser: user}
+}
+
+// ExecOpenclaw runs `su - <user> -c 'openclaw <args...>'` over SSH.
 // Each argument is shell-quoted to safely handle JSON and special characters.
 func (i *SSHInstance) ExecOpenclaw(ctx context.Context, args ...string) (string, string, int, error) {
-	// Guard against pathological input sizes that would overflow the slice length.
 	const maxArgs = 1<<16 - 1
 	if len(args) > maxArgs {
 		return "", "", -1, fmt.Errorf("too many arguments: %d (max %d)", len(args), maxArgs)
@@ -45,6 +53,6 @@ func (i *SSHInstance) ExecOpenclaw(ctx context.Context, args ...string) (string,
 	for j, a := range args {
 		parts[j+1] = ShellQuote(a)
 	}
-	cmd := "su - claworc -c " + ShellQuote(strings.Join(parts, " "))
+	cmd := "su - " + ShellQuote(i.openclawUser) + " -c " + ShellQuote(strings.Join(parts, " "))
 	return RunCommand(i.client, cmd)
 }

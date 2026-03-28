@@ -1,20 +1,21 @@
 # This is an example. It is recommended to use install.sh or install.ps1 depending on your operating system
 services:
   control-plane:
-    image: glukw/claworc:latest
+    image: ${CLAWORC_IMAGE:-glukw/claworc:latest}
+    container_name: ${CLAWORC_CONTAINER_NAME:-claworc}
     ports:
-      - "8000:8000"
+      - "${CLAWORC_BIND_ADDRESS:-127.0.0.1}:${CLAWORC_HOST_PORT:-8001}:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - claworc-data:/app/data
+      - ${CLAWORC_DATA_DIR:-/home/dobrota/.claworc/data}:/app/data
     environment:
-      - CLAWORC_DATA_PATH=/app/data
+      CLAWORC_DATA_PATH: /app/data
+      CLAWORC_DEFAULT_CONTAINER_IMAGE: ${CLAWORC_DEFAULT_CONTAINER_IMAGE:-glukw/openclaw-vnc-chromium:latest}
+      CLAWORC_RP_ORIGINS: ${CLAWORC_RP_ORIGINS:-http://localhost:8001}
+      CLAWORC_RP_ID: ${CLAWORC_RP_ID:-localhost}
     restart: unless-stopped
     networks:
       - claworc
-
-volumes:
-  claworc-data:
 
 networks:
   claworc:
