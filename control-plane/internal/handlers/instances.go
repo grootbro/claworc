@@ -622,6 +622,8 @@ func humanizeArchiveImportError(err error) string {
 		return "Unsupported archive format. Use .zip, .tar, .tar.gz, or .tgz."
 	case strings.Contains(msg, "invalid zip archive"), strings.Contains(msg, "invalid gzip archive"), strings.Contains(msg, "read tar archive"):
 		return "Archive could not be read cleanly. Re-export it as .zip, .tar, .tar.gz, or .tgz and try again."
+	case strings.Contains(msg, "pull access denied"), strings.Contains(msg, "repository does not exist"), strings.Contains(msg, "manifest unknown"):
+		return "The selected base image is not available on this server. Leave Base image empty to use a local managed image, or enter an image the server can pull."
 	default:
 		return msg
 	}

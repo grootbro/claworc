@@ -236,6 +236,101 @@ func defaultManagedImageRef() string {
 	return "glukw/openclaw-vnc-chromium:latest"
 }
 
+func imageRepository(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
+	}
+	if i := strings.Index(ref, "@"); i >= 0 {
+		ref = ref[:i]
+	}
+	lastSlash := strings.LastIndex(ref, "/")
+	lastColon := strings.LastIndex(ref, ":")
+	if lastColon > lastSlash {
+		return ref[:lastColon]
+	}
+	return ref
+}
+
+func managedImageRepoScore(repo, preferred string) int {
+	repo = strings.TrimSpace(repo)
+	preferred = strings.TrimSpace(preferred)
+	switch {
+	case repo == "" || repo == "<none>":
+		return 0
+	case preferred != "" && repo == preferred:
+		return 3
+	case repo == "openclaw-vnc-chromium", strings.HasSuffix(repo, "/openclaw-vnc-chromium"):
+		return 2
+	case strings.Contains(repo, "openclaw-vnc-chromium"):
+		return 1
+	default:
+		return 0
+	}
+}
+
+func (d *DockerOrchestrator) bestLocalManagedImage(ctx context.Context, preferredRepo string) string {
+	images, err := d.client.ImageList(ctx, image.ListOptions{})
+	if err != nil {
+		log.Printf("Failed to list local images for archive import fallback: %v", err)
+		return ""
+	}
+
+	var bestTag string
+	var bestScore int
+	var bestCreated int64
+
+	for _, img := range images {
+		for _, tag := range img.RepoTags {
+			tag = strings.TrimSpace(tag)
+			if tag == "" || tag == "<none>:<none>" {
+				continue
+			}
+			score := managedImageRepoScore(imageRepository(tag), preferredRepo)
+			if score == 0 {
+				continue
+			}
+			if bestTag == "" || score > bestScore || (score == bestScore && img.Created > bestCreated) {
+				bestTag = tag
+				bestScore = score
+				bestCreated = img.Created
+			}
+		}
+	}
+
+	return bestTag
+}
+
+func (d *DockerOrchestrator) resolveArchiveBaseImage(ctx context.Context, requested string) (string, ImageContract, []string, error) {
+	requested = strings.TrimSpace(requested)
+	if requested != "" {
+		contract, err := d.ResolveImageContract(ctx, requested)
+		return requested, contract, nil, err
+	}
+
+	preferred := defaultManagedImageRef()
+	contract, err := d.ResolveImageContract(ctx, preferred)
+	if err == nil {
+		return preferred, contract, nil, nil
+	}
+
+	fallback := d.bestLocalManagedImage(ctx, imageRepository(preferred))
+	if fallback == "" || fallback == preferred {
+		return preferred, NormalizeImageContract(ImageContract{}), nil, err
+	}
+
+	log.Printf("Default managed image %s unavailable for archive import, falling back to local image %s: %v", preferred, fallback, err)
+	fallbackContract, fallbackErr := d.ResolveImageContract(ctx, fallback)
+	if fallbackErr != nil {
+		return preferred, NormalizeImageContract(ImageContract{}), nil, err
+	}
+
+	notes := []string{
+		fmt.Sprintf("Default managed image %q was unavailable on this server, so Claworc used local managed image %q instead.", preferred, fallback),
+	}
+	return fallback, fallbackContract, notes, nil
+}
+
 func sanitizeArchiveImageComponent(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	if value == "" {
@@ -717,12 +812,7 @@ func (d *DockerOrchestrator) BuildArchiveImage(ctx context.Context, params Archi
 		return nil, fmt.Errorf("archive path and name are required")
 	}
 
-	baseImage := strings.TrimSpace(params.BaseImage)
-	if baseImage == "" {
-		baseImage = defaultManagedImageRef()
-	}
-
-	baseContract, err := d.ResolveImageContract(ctx, baseImage)
+	baseImage, baseContract, notes, err := d.resolveArchiveBaseImage(ctx, params.BaseImage)
 	if err != nil {
 		return nil, err
 	}
@@ -747,10 +837,11 @@ func (d *DockerOrchestrator) BuildArchiveImage(ctx context.Context, params Archi
 		return nil, err
 	}
 
-	sourceRoot, detectedLayout, sourceLabel, notes, err := detectArchiveHomeRoot(extractDir)
+	sourceRoot, detectedLayout, sourceLabel, detectedNotes, err := detectArchiveHomeRoot(extractDir)
 	if err != nil {
 		return nil, err
 	}
+	notes = append(notes, detectedNotes...)
 	if err := copyDirContents(sourceRoot, preparedHomeDir); err != nil {
 		return nil, err
 	}
