@@ -4,6 +4,7 @@ LABEL io.claworc.image-mode="managed" \
       io.claworc.openclaw-user="claworc" \
       io.claworc.openclaw-home="/home/claworc"
 COPY rootfs/etc/s6-overlay/s6-rc.d/svc-openclaw/run /etc/s6-overlay/s6-rc.d/svc-openclaw/run
+COPY rootfs/usr/local/bin/claworc-healthcheck /usr/local/bin/claworc-healthcheck
 COPY scripts/patch-openclaw-tts-tool.mjs /opt/openclaw-patches/patch-openclaw-tts-tool.mjs
 COPY scripts/patch-openclaw-slack-ux.mjs /opt/openclaw-patches/patch-openclaw-slack-ux.mjs
 RUN apt-get update && \
@@ -12,4 +13,4 @@ RUN apt-get update && \
     node /opt/openclaw-patches/patch-openclaw-tts-tool.mjs && \
     node /opt/openclaw-patches/patch-openclaw-slack-ux.mjs "32" '["Thinking","Analyzing","Planning","Drafting","Polishing"]' "6500" && \
     rm -rf /var/lib/apt/lists/* && \
-    chmod +x /etc/s6-overlay/s6-rc.d/svc-openclaw/run
+    chmod +x /etc/s6-overlay/s6-rc.d/svc-openclaw/run /usr/local/bin/claworc-healthcheck

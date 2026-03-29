@@ -6,10 +6,15 @@ export HOME="$OPENCLAW_HOME"
 export OPENCLAW_CONFIG_DIR="$OPENCLAW_HOME/.openclaw"
 export OPENCLAW_CONFIG_FILE="$OPENCLAW_CONFIG_DIR/openclaw.json"
 export OPENCLAW_TMPDIR=/tmp/openclaw
+export OPENCLAW_LOG_DIR=/var/log/claworc
 
 mkdir -p "$OPENCLAW_TMPDIR"
 chown "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_TMPDIR"
 chmod 700 "$OPENCLAW_TMPDIR"
+
+mkdir -p "$OPENCLAW_LOG_DIR"
+chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_LOG_DIR"
+chmod 775 "$OPENCLAW_LOG_DIR"
 
 run_openclaw() {
     s6-setuidgid "$OPENCLAW_USER" env HOME="$OPENCLAW_HOME" TMPDIR="$OPENCLAW_TMPDIR" openclaw "$@"
