@@ -115,6 +115,20 @@ textarea {
   background-color: transparent !important;
 }
 
+.theme-dark .bg-slate-50,
+.theme-dark .hover\:bg-slate-50:hover {
+  background-color: rgba(148, 163, 184, 0.08) !important;
+}
+
+.theme-dark .bg-slate-100,
+.theme-dark .hover\:bg-slate-100:hover {
+  background-color: rgba(148, 163, 184, 0.12) !important;
+}
+
+.theme-dark .bg-slate-900 {
+  background-color: rgba(7, 17, 31, 0.92) !important;
+}
+
 .theme-dark .bg-gray-100,
 .theme-dark .hover\:bg-gray-100:hover {
   background-color: rgba(148, 163, 184, 0.12) !important;
@@ -125,14 +139,39 @@ textarea {
   background-color: var(--app-surface) !important;
 }
 
+.theme-dark .bg-white\/8,
+.theme-dark .bg-white\/10,
+.theme-dark .bg-white\/70,
+.theme-dark .bg-white\/80,
+.theme-dark .bg-white\/90,
+.theme-dark .bg-white\/95,
+.theme-dark .hover\:bg-white\/80:hover,
+.theme-dark .hover\:bg-white\/90:hover {
+  background-color: rgba(17, 29, 49, 0.92) !important;
+}
+
 .theme-dark .border-gray-100,
 .theme-dark .border-gray-200,
 .theme-dark .border-gray-300 {
   border-color: var(--app-border) !important;
 }
 
+.theme-dark .border-slate-200,
+.theme-dark .border-slate-300,
+.theme-dark .border-slate-800,
+.theme-dark .border-white\/10,
+.theme-dark .border-white\/15,
+.theme-dark .border-white\/70 {
+  border-color: var(--app-border) !important;
+}
+
 .theme-dark .text-gray-900,
 .theme-dark .hover\:text-gray-900:hover {
+  color: var(--app-text) !important;
+}
+
+.theme-dark .text-slate-900,
+.theme-dark .hover\:text-slate-900:hover {
   color: var(--app-text) !important;
 }
 
@@ -143,6 +182,15 @@ textarea {
   color: var(--app-text-soft) !important;
 }
 
+.theme-dark .text-slate-800,
+.theme-dark .text-slate-700,
+.theme-dark .text-slate-600,
+.theme-dark .hover\:text-slate-800:hover,
+.theme-dark .hover\:text-slate-700:hover,
+.theme-dark .hover\:text-slate-600:hover {
+  color: var(--app-text-soft) !important;
+}
+
 .theme-dark .text-gray-600,
 .theme-dark .text-gray-500,
 .theme-dark .hover\:text-gray-600:hover,
@@ -150,13 +198,42 @@ textarea {
   color: var(--app-text-muted) !important;
 }
 
+.theme-dark .text-slate-500,
+.theme-dark .hover\:text-slate-500:hover {
+  color: var(--app-text-muted) !important;
+}
+
 .theme-dark .text-gray-400 {
+  color: var(--app-text-faint) !important;
+}
+
+.theme-dark .text-slate-400 {
   color: var(--app-text-faint) !important;
 }
 
 .theme-dark .bg-blue-50,
 .theme-dark .hover\:bg-blue-50:hover {
   background-color: rgba(59, 130, 246, 0.14) !important;
+}
+
+.theme-dark .bg-sky-50,
+.theme-dark .hover\:bg-sky-50:hover {
+  background-color: rgba(14, 165, 233, 0.14) !important;
+}
+
+.theme-dark .bg-cyan-50,
+.theme-dark .hover\:bg-cyan-50:hover {
+  background-color: rgba(6, 182, 212, 0.14) !important;
+}
+
+.theme-dark .bg-emerald-50,
+.theme-dark .hover\:bg-emerald-50:hover {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+}
+
+.theme-dark .bg-violet-50,
+.theme-dark .hover\:bg-violet-50:hover {
+  background-color: rgba(139, 92, 246, 0.14) !important;
 }
 
 .theme-dark .text-blue-600,
@@ -179,6 +256,22 @@ textarea {
   border-color: rgba(96, 165, 250, 0.28) !important;
 }
 
+.theme-dark .border-sky-200 {
+  border-color: rgba(14, 165, 233, 0.24) !important;
+}
+
+.theme-dark .border-cyan-200 {
+  border-color: rgba(6, 182, 212, 0.24) !important;
+}
+
+.theme-dark .border-emerald-200 {
+  border-color: rgba(16, 185, 129, 0.24) !important;
+}
+
+.theme-dark .border-violet-200 {
+  border-color: rgba(139, 92, 246, 0.24) !important;
+}
+
 .theme-dark .bg-green-50,
 .theme-dark .hover\:bg-green-50:hover,
 .theme-dark .bg-green-100 {
@@ -190,6 +283,12 @@ textarea {
 .theme-dark .text-green-800,
 .theme-dark .hover\:text-green-600:hover {
   color: #83e6a6 !important;
+}
+
+.theme-dark .text-emerald-700,
+.theme-dark .text-emerald-900,
+.theme-dark .hover\:text-emerald-700:hover {
+  color: #8ff0c8 !important;
 }
 
 .theme-dark .bg-yellow-50,
@@ -243,6 +342,22 @@ textarea {
 .theme-dark .text-purple-600,
 .theme-dark .hover\:text-purple-600:hover {
   color: #d0a3ff !important;
+}
+
+.theme-dark .text-violet-700,
+.theme-dark .text-violet-900,
+.theme-dark .hover\:text-violet-700:hover {
+  color: #d8b4fe !important;
+}
+
+.theme-dark .text-sky-700,
+.theme-dark .hover\:text-sky-700:hover {
+  color: #8edcff !important;
+}
+
+.theme-dark .text-cyan-700,
+.theme-dark .hover\:text-cyan-700:hover {
+  color: #8ce9f5 !important;
 }
 
 .theme-dark .bg-indigo-50,

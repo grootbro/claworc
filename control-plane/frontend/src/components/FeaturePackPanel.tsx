@@ -616,9 +616,9 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
 
                     {isExpanded && (
                       <div className="border-t border-blue-100 bg-white/90 px-5 py-5 sm:px-6">
-                        <div className={`grid gap-5 ${hasAsideColumn ? "xl:grid-cols-[320px_minmax(0,1fr)]" : ""}`}>
+                        <div className="grid gap-5">
                           {hasAsideColumn && (
-                            <div className="space-y-3">
+                            <div className="grid gap-3 xl:grid-cols-2">
                               {managedPreviews.length > 0 && (
                                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
                                   <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
