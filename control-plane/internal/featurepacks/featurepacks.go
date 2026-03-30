@@ -1221,8 +1221,8 @@ func buildAccessTrustPlan(inputs map[string]string) (*Plan, error) {
 				Block: `<!-- claworc:feature-pack access-trust -->
 ## Access and trust
 
-- Before granting internal, operator, or owner mode, consult `ACCESS_TRUST.md`.
-- Resolve role in this order: `owner -> trusted -> public`.
+- Before granting internal, operator, or owner mode, consult ACCESS_TRUST.md.
+- Resolve role in this order: owner -> trusted -> public.
 - Match by the current messenger account id for Telegram, VK, or Slack.
 - If no trusted match is configured, stay in safe public-oracle mode.
 - Never expose secrets, tokens, raw config, SSH details, or system files in any role.
@@ -1235,8 +1235,8 @@ func buildAccessTrustPlan(inputs map[string]string) (*Plan, error) {
 				Block: `<!-- claworc:feature-pack access-trust -->
 ## Access source of truth
 
-- `ACCESS_TRUST.md` is the operator-managed source of truth for trusted messenger identities and oracle posture.
-- `trusted_contexts.json` mirrors the same data in machine-friendly form for future automations.
+- ACCESS_TRUST.md is the operator-managed source of truth for trusted messenger identities and oracle posture.
+- trusted_contexts.json mirrors the same data in machine-friendly form for future automations.
 - If the current user does not match a configured trusted context, answer as a safe public NeoDome assistant.
 - For identity questions, use the configured high-level explanation mode and never echo raw ids back to the user unless the chat is manager-facing.`,
 			},
