@@ -6,6 +6,7 @@ interface HealthResponse {
   orchestrator_backend: "kubernetes" | "docker" | "none";
   database: string;
   build_date?: string;
+  version?: string;
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {

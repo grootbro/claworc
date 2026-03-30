@@ -138,6 +138,13 @@ type archiveImageImportResponse struct {
 	Notes              []string `json:"notes"`
 }
 
+type instanceBackupRestoreResponse struct {
+	DetectedRoot   string   `json:"detected_root"`
+	DetectedLayout string   `json:"detected_layout"`
+	Restarted      bool     `json:"restarted"`
+	Notes          []string `json:"notes"`
+}
+
 func canSelfProvision(user *database.User) bool {
 	return user != nil && (user.Role == "admin" || user.CanCreateInstances)
 }
@@ -642,8 +649,34 @@ func humanizeBackupExportError(err error) string {
 		return "This bot does not have a readable home volume on the current server."
 	case strings.Contains(msg, "does not contain a .openclaw directory"):
 		return "This bot home is missing .openclaw, so Claworc cannot build a restore-ready backup from it yet."
+	case strings.Contains(msg, "symlinks are not supported in exported archives"):
+		return "This bot has symlinks inside .openclaw, so Claworc cannot build a portable backup from it yet. Replace them with real files, or use Advanced .tgz."
 	case strings.Contains(msg, "export staging failed"):
 		return "Claworc could not stage the bot home for backup. Try again in a moment, or restart the instance if its filesystem is mid-change."
+	default:
+		return msg
+	}
+}
+
+func humanizeBackupRestoreError(err error) string {
+	if err == nil {
+		return "Failed to restore instance backup"
+	}
+
+	msg := strings.TrimSpace(err.Error())
+	switch {
+	case strings.Contains(msg, "unsupported archive format"):
+		return "Unsupported backup format. Use .zip, .tar, .tar.gz, or .tgz."
+	case strings.Contains(msg, "archive must contain a .openclaw directory"):
+		return "Backup is missing an OpenClaw home. Put .openclaw at the archive root, or wrap everything in one top-level folder that contains .openclaw."
+	case strings.Contains(msg, "multiple possible OpenClaw homes"):
+		return "Backup contains more than one possible OpenClaw home. Keep exactly one .openclaw root in the export."
+	case strings.Contains(msg, "archive symlinks are not supported"), strings.Contains(msg, "symlinks are not supported in imported archives"):
+		return "Backup contains symlinks. Repack it with real files only, without symbolic links."
+	case strings.Contains(msg, "invalid zip archive"), strings.Contains(msg, "invalid gzip archive"), strings.Contains(msg, "read tar archive"):
+		return "Backup archive could not be read cleanly. Re-export it as .zip, .tar, .tar.gz, or .tgz and try again."
+	case strings.Contains(msg, "instance home volume not found"):
+		return "This bot does not have a writable home volume on the current server."
 	default:
 		return msg
 	}
@@ -829,6 +862,167 @@ func ExportInstanceBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Claworc-Archive-Root", result.RootDirectory)
 	w.Header().Set("X-Claworc-Archive-Format", result.Format)
 	http.ServeContent(w, r, result.ArchiveName, info.ModTime(), file)
+}
+
+func RestoreInstanceBackup(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var inst database.Instance
+	if err := database.DB.First(&inst, id).Error; err != nil {
+		writeError(w, http.StatusNotFound, "Instance not found")
+		return
+	}
+
+	if !middleware.CanAccessInstance(r, inst.ID) {
+		writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+	user := middleware.GetUser(r)
+	if !canManageOwnedInstance(user, inst) {
+		writeError(w, http.StatusForbidden, "Only the owner or an admin can restore this instance backup")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 512<<20)
+	if err := r.ParseMultipartForm(512 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "Archive too large or invalid form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Missing archive file")
+		return
+	}
+	defer file.Close()
+
+	tmpFile, err := os.CreateTemp("", "claworc-backup-restore-*")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to create temporary file")
+		return
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := io.Copy(tmpFile, file); err != nil {
+		tmpFile.Close()
+		writeError(w, http.StatusBadRequest, "Failed to read uploaded archive")
+		return
+	}
+	if err := tmpFile.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to finalize uploaded archive")
+		return
+	}
+
+	orch := orchestrator.Get()
+	if orch == nil || !orch.IsAvailable(r.Context()) {
+		writeError(w, http.StatusServiceUnavailable, "Orchestrator unavailable")
+		return
+	}
+
+	orchStatus, err := orch.GetInstanceStatus(r.Context(), inst.Name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to inspect instance status: %v", err))
+		return
+	}
+	if orchStatus != "running" && orchStatus != "stopped" {
+		writeError(w, http.StatusBadRequest, "Instance must be running or stopped before restoring a backup")
+		return
+	}
+	wasRunning := orchStatus == "running"
+
+	database.DB.Model(&inst).Updates(map[string]interface{}{
+		"status":         "restoring",
+		"status_message": "Restoring backup archive...",
+		"updated_at":     time.Now().UTC(),
+	})
+
+	if wasRunning {
+		if SSHMgr != nil {
+			SSHMgr.CancelReconnection(inst.ID)
+		}
+		if TunnelMgr != nil {
+			if err := TunnelMgr.StopTunnelsForInstance(inst.ID); err != nil {
+				log.Printf("Failed to stop tunnels for instance %d before backup restore: %v", inst.ID, err)
+			}
+		}
+		if err := orch.StopInstance(r.Context(), inst.Name); err != nil {
+			database.DB.Model(&inst).Updates(map[string]interface{}{
+				"status":         "running",
+				"status_message": "",
+				"updated_at":     time.Now().UTC(),
+			})
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to stop instance before restore: %v", err))
+			return
+		}
+	}
+
+	restoreResult, restoreErr := orch.RestoreInstanceBackup(r.Context(), orchestrator.InstanceArchiveRestoreParams{
+		Name:        inst.Name,
+		ArchiveName: header.Filename,
+		ArchivePath: tmpPath,
+	})
+	if restoreErr != nil {
+		var resumeErr error
+		if wasRunning {
+			resumeErr = orch.StartInstance(r.Context(), inst.Name)
+		}
+
+		finalStatus := "stopped"
+		if wasRunning && resumeErr == nil {
+			finalStatus = "running"
+		} else if resumeErr != nil {
+			finalStatus = "error"
+		}
+
+		statusMessage := ""
+		if resumeErr != nil {
+			statusMessage = fmt.Sprintf("Backup restore failed and the instance could not be restarted: %v", resumeErr)
+		}
+
+		database.DB.Model(&inst).Updates(map[string]interface{}{
+			"status":         finalStatus,
+			"status_message": statusMessage,
+			"updated_at":     time.Now().UTC(),
+		})
+
+		log.Printf("Failed to restore backup for instance %d (%s): %v", inst.ID, utils.SanitizeForLog(inst.Name), restoreErr)
+		writeError(w, http.StatusBadRequest, humanizeBackupRestoreError(restoreErr))
+		return
+	}
+
+	if wasRunning {
+		if err := orch.StartInstance(r.Context(), inst.Name); err != nil {
+			database.DB.Model(&inst).Updates(map[string]interface{}{
+				"status":         "error",
+				"status_message": fmt.Sprintf("Backup restored, but failed to restart: %v", err),
+				"updated_at":     time.Now().UTC(),
+			})
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Backup restored, but failed to restart the instance: %v", err))
+			return
+		}
+	}
+
+	finalStatus := "stopped"
+	if wasRunning {
+		finalStatus = "running"
+	}
+	database.DB.Model(&inst).Updates(map[string]interface{}{
+		"status":         finalStatus,
+		"status_message": "",
+		"updated_at":     time.Now().UTC(),
+	})
+
+	writeJSON(w, http.StatusOK, instanceBackupRestoreResponse{
+		DetectedRoot:   restoreResult.DetectedRoot,
+		DetectedLayout: restoreResult.DetectedLayout,
+		Restarted:      wasRunning,
+		Notes:          restoreResult.Notes,
+	})
 }
 
 func ListInstances(w http.ResponseWriter, r *http.Request) {

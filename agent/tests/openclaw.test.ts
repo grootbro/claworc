@@ -55,6 +55,37 @@ describe.skipIf(!container)("agent image", { timeout: 300_000 }, () => {
     expect(result.stdout.trim()).toBe("claworc:claworc");
   });
 
+  it("bootstraps a user-managed OpenClaw runtime for safe self-updates", () => {
+    const seedResult = exec(container!, [
+      "test",
+      "-f",
+      "/opt/openclaw-seed/bin/openclaw",
+    ]);
+    expect(seedResult.exitCode).toBe(0);
+
+    const npmrcResult = exec(container!, ["cat", "/home/claworc/.npmrc"]);
+    expect(npmrcResult.exitCode).toBe(0);
+    expect(npmrcResult.stdout).toContain("prefix=/home/claworc/.npm-global");
+
+    const result = execAsUser(
+      container!,
+      "command -v openclaw && npm root -g && test -f /home/claworc/.npm-global/lib/node_modules/openclaw/openclaw.mjs",
+    );
+    expect(result.exitCode).toBe(0);
+    const lines = result.stdout.trim().split("\n");
+    expect(lines[0]).toBe("/home/claworc/.npm-global/bin/openclaw");
+    expect(lines[1]).toBe("/home/claworc/.npm-global/lib/node_modules");
+  });
+
+  it("ships the optional Slack UX patch script without depending on it at boot", () => {
+    const result = exec(container!, [
+      "test",
+      "-f",
+      "/opt/openclaw-patches/patch-openclaw-slack-ux.mjs",
+    ]);
+    expect(result.exitCode).toBe(0);
+  });
+
   it("openclaw.json structure matches snapshot", () => {
     const result = exec(container!, [
       "cat",

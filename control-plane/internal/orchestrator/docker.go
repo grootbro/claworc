@@ -45,6 +45,8 @@ const (
 
 var volumeSuffixes = []string{"homebrew", "home"}
 
+var ignoredBackupExportStagingLine = regexp.MustCompile(`^cp: can't stat '.*?/chrome-data/Singleton[^']*': No such file or directory$`)
+
 type DockerOrchestrator struct {
 	client          *dockerclient.Client
 	available       bool
@@ -925,7 +927,12 @@ func (d *DockerOrchestrator) ExportInstanceBackup(ctx context.Context, params In
 		return nil, err
 	}
 
-	if err := d.copyVolumeToDirectory(ctx, homeVolume, stagingParent, rootDir); err != nil {
+	if format == "zip" {
+		err = d.copyOpenClawVolumeToDirectory(ctx, homeVolume, stagingParent, rootDir)
+	} else {
+		err = d.copyVolumeToDirectory(ctx, homeVolume, stagingParent, rootDir)
+	}
+	if err != nil {
 		os.RemoveAll(tempDir)
 		return nil, err
 	}
@@ -954,6 +961,68 @@ func (d *DockerOrchestrator) ExportInstanceBackup(ctx context.Context, params In
 		RootDirectory: rootDir,
 		Format:        format,
 		CleanupPath:   tempDir,
+	}, nil
+}
+
+func (d *DockerOrchestrator) RestoreInstanceBackup(ctx context.Context, params InstanceArchiveRestoreParams) (*InstanceArchiveRestoreResult, error) {
+	if strings.TrimSpace(params.Name) == "" {
+		return nil, fmt.Errorf("instance name is required")
+	}
+	if strings.TrimSpace(params.ArchivePath) == "" || strings.TrimSpace(params.ArchiveName) == "" {
+		return nil, fmt.Errorf("archive path and name are required")
+	}
+
+	homeVolume := d.volumeName(params.Name, "home")
+	if _, err := d.client.VolumeInspect(ctx, homeVolume); err != nil {
+		if dockerclient.IsErrNotFound(err) {
+			return nil, fmt.Errorf("instance home volume not found")
+		}
+		return nil, fmt.Errorf("inspect home volume: %w", err)
+	}
+
+	tempDir, err := os.MkdirTemp("", "claworc-restore-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tempDir)
+
+	extractDir := filepath.Join(tempDir, "extract")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		return nil, err
+	}
+	if err := extractArchive(params.ArchivePath, params.ArchiveName, extractDir); err != nil {
+		return nil, err
+	}
+
+	sourceRoot, detectedLayout, sourceLabel, detectedNotes, err := detectArchiveHomeRoot(extractDir)
+	if err != nil {
+		return nil, err
+	}
+
+	rollbackParent := filepath.Join(tempDir, "rollback")
+	rollbackRootName := "current-home"
+	rollbackRoot := filepath.Join(rollbackParent, rollbackRootName)
+	if err := os.MkdirAll(rollbackParent, 0o755); err != nil {
+		return nil, err
+	}
+	if err := d.copyVolumeToDirectory(ctx, homeVolume, rollbackParent, rollbackRootName); err != nil {
+		return nil, fmt.Errorf("snapshot current home before restore: %w", err)
+	}
+
+	if err := d.replaceVolumeContentsFromDirectory(ctx, homeVolume, sourceRoot); err != nil {
+		if rollbackErr := d.replaceVolumeContentsFromDirectory(ctx, homeVolume, rollbackRoot); rollbackErr != nil {
+			return nil, fmt.Errorf("restore backup: %w (rollback failed: %v)", err, rollbackErr)
+		}
+		return nil, fmt.Errorf("restore backup: %w", err)
+	}
+
+	notes := append([]string{}, detectedNotes...)
+	notes = append(notes, fmt.Sprintf("Restored archive %q into the current bot home.", params.ArchiveName))
+
+	return &InstanceArchiveRestoreResult{
+		DetectedRoot:   sourceLabel,
+		DetectedLayout: detectedLayout,
+		Notes:          notes,
 	}, nil
 }
 
@@ -1087,6 +1156,65 @@ func (d *DockerOrchestrator) copyVolumeToDirectory(ctx context.Context, srcVol, 
 	case status := <-statusCh:
 		if status.StatusCode != 0 {
 			logs := d.readContainerLogs(ctx, resp.ID)
+			if backupExportHasOnlyIgnoredStagingErrors(logs) {
+				log.Printf("Ignoring transient Chromium singleton files while exporting backup from volume %s", utils.SanitizeForLog(srcVol))
+				break
+			}
+			if logs != "" {
+				return fmt.Errorf("export staging failed: %s", logs)
+			}
+			return fmt.Errorf("export staging failed with exit code %d", status.StatusCode)
+		}
+	}
+
+	reader, _, err := d.client.CopyFromContainer(ctx, resp.ID, "/out/"+rootDir)
+	if err != nil {
+		return fmt.Errorf("copy staged backup from container: %w", err)
+	}
+	defer reader.Close()
+
+	if err := extractTarStream(reader, dstDir); err != nil {
+		return fmt.Errorf("extract staged backup: %w", err)
+	}
+	return nil
+}
+
+func (d *DockerOrchestrator) copyOpenClawVolumeToDirectory(ctx context.Context, srcVol, dstDir, rootDir string) error {
+	_ = d.ensureImage(ctx, "alpine:latest")
+
+	containerCfg := &container.Config{
+		Image: "alpine:latest",
+		Cmd: []string{
+			"sh",
+			"-c",
+			fmt.Sprintf("mkdir -p /out/%s && cp -a /src/.openclaw /out/%s/ && test -d /out/%s/.openclaw", rootDir, rootDir, rootDir),
+		},
+	}
+	hostCfg := &container.HostConfig{
+		Mounts: []mount.Mount{
+			{Type: mount.TypeVolume, Source: srcVol, Target: "/src", ReadOnly: true},
+		},
+	}
+
+	resp, err := d.client.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, "")
+	if err != nil {
+		return fmt.Errorf("create export container: %w", err)
+	}
+	defer d.client.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+
+	if err := d.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		return fmt.Errorf("start export container: %w", err)
+	}
+
+	statusCh, errCh := d.client.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("wait for export container: %w", err)
+		}
+	case status := <-statusCh:
+		if status.StatusCode != 0 {
+			logs := d.readContainerLogs(ctx, resp.ID)
 			if logs != "" {
 				return fmt.Errorf("export staging failed: %s", logs)
 			}
@@ -1122,6 +1250,71 @@ func (d *DockerOrchestrator) readContainerLogs(ctx context.Context, containerID 
 		return strings.TrimSpace(stdout.String() + "\n" + stderr.String())
 	}
 	return strings.TrimSpace(stdout.String() + "\n" + stderr.String())
+}
+
+func backupExportHasOnlyIgnoredStagingErrors(logs string) bool {
+	lines := strings.Split(strings.TrimSpace(logs), "\n")
+	matched := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !ignoredBackupExportStagingLine.MatchString(line) {
+			return false
+		}
+		matched = true
+	}
+	return matched
+}
+
+func (d *DockerOrchestrator) replaceVolumeContentsFromDirectory(ctx context.Context, dstVol, srcRoot string) error {
+	_ = d.ensureImage(ctx, "alpine:latest")
+
+	contextTar, err := buildContextTar(srcRoot)
+	if err != nil {
+		return fmt.Errorf("archive restore context: %w", err)
+	}
+
+	containerCfg := &container.Config{
+		Image: "alpine:latest",
+		Cmd:   []string{"sh", "-c", "mkdir -p /restore-src /dst && tail -f /dev/null"},
+	}
+	hostCfg := &container.HostConfig{
+		Mounts: []mount.Mount{
+			{Type: mount.TypeVolume, Source: dstVol, Target: "/dst"},
+		},
+	}
+
+	resp, err := d.client.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, "")
+	if err != nil {
+		return fmt.Errorf("create restore container: %w", err)
+	}
+	defer d.client.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+
+	if err := d.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		return fmt.Errorf("start restore container: %w", err)
+	}
+
+	if err := d.client.CopyToContainer(ctx, resp.ID, "/restore-src", bytes.NewReader(contextTar.Bytes()), container.CopyToContainerOptions{}); err != nil {
+		return fmt.Errorf("stage restore files: %w", err)
+	}
+
+	stdout, _, code, err := d.ExecInInstance(ctx, resp.ID, []string{
+		"sh", "-c",
+		"set -eu; find /dst -mindepth 1 -maxdepth 1 -exec rm -rf {} +; cp -a /restore-src/. /dst/; test -d /dst/.openclaw",
+	})
+	if err != nil {
+		return fmt.Errorf("apply restore: %w", err)
+	}
+	if code != 0 {
+		msg := strings.TrimSpace(stdout)
+		if msg == "" {
+			msg = fmt.Sprintf("exit code %d", code)
+		}
+		return fmt.Errorf("apply restore: %s", msg)
+	}
+	return nil
 }
 
 func (d *DockerOrchestrator) DeleteInstance(ctx context.Context, name string) error {

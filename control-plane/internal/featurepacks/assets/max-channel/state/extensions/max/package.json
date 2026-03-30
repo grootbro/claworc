@@ -1,0 +1,45 @@
+{
+  "name": "@openclaw/max",
+  "version": "2026.3.30-beta.0",
+  "private": true,
+  "description": "OpenClaw MAX channel plugin",
+  "type": "module",
+  "dependencies": {
+    "@maxhub/max-bot-api": "^0.2.2"
+  },
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.28-beta.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "max",
+      "label": "MAX",
+      "selectionLabel": "MAX",
+      "detailLabel": "MAX Bot",
+      "docsPath": "/channels/max",
+      "docsLabel": "max",
+      "blurb": "MAX messenger bot channel with webhook-first production delivery.",
+      "aliases": [
+        "mailru-max"
+      ],
+      "order": 83,
+      "quickstartAllowFrom": true,
+      "markdownCapable": true
+    },
+    "bundle": {
+      "stageRuntimeDependencies": true
+    }
+  }
+}

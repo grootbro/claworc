@@ -10,6 +10,7 @@ import (
 )
 
 var BuildDate string
+var Version string
 
 var startTime = time.Now()
 
@@ -46,6 +47,9 @@ func HealthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	if BuildDate != "" {
 		resp["build_date"] = BuildDate
+	}
+	if Version != "" {
+		resp["version"] = Version
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

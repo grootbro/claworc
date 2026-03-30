@@ -51,10 +51,22 @@ func (mockOps) StopInstance(_ context.Context, _ string) error                  
 func (mockOps) RestartInstance(_ context.Context, _ string) error                   { return nil }
 func (mockOps) GetInstanceStatus(_ context.Context, _ string) (string, error)       { return "running", nil }
 func (mockOps) GetInstanceImageInfo(_ context.Context, _ string) (string, error)    { return "", nil }
-func (mockOps) UpdateInstanceConfig(_ context.Context, _ string, _ string) error    { return nil }
-func (mockOps) CloneVolumes(_ context.Context, _, _ string) error                   { return nil }
-func (mockOps) ConfigureSSHAccess(_ context.Context, _ uint, _ string) error        { return nil }
-func (mockOps) GetSSHAddress(_ context.Context, _ uint) (string, int, error)        { return "", 0, nil }
+func (mockOps) ResolveImageContract(_ context.Context, _ string) (orchestrator.ImageContract, error) {
+	return orchestrator.NormalizeImageContract(orchestrator.ImageContract{}), nil
+}
+func (mockOps) BuildArchiveImage(_ context.Context, _ orchestrator.ArchiveImageBuildParams) (*orchestrator.ArchiveImageBuildResult, error) {
+	return nil, nil
+}
+func (mockOps) ExportInstanceBackup(_ context.Context, _ orchestrator.InstanceArchiveExportParams) (*orchestrator.InstanceArchiveExportResult, error) {
+	return nil, nil
+}
+func (mockOps) RestoreInstanceBackup(_ context.Context, _ orchestrator.InstanceArchiveRestoreParams) (*orchestrator.InstanceArchiveRestoreResult, error) {
+	return nil, nil
+}
+func (mockOps) UpdateInstanceConfig(_ context.Context, _ string, _ string) error { return nil }
+func (mockOps) CloneVolumes(_ context.Context, _, _ string) error                { return nil }
+func (mockOps) ConfigureSSHAccess(_ context.Context, _ uint, _ string) error     { return nil }
+func (mockOps) GetSSHAddress(_ context.Context, _ uint) (string, int, error)     { return "", 0, nil }
 func (mockOps) UpdateResources(_ context.Context, _ string, _ orchestrator.UpdateResourcesParams) error {
 	return nil
 }

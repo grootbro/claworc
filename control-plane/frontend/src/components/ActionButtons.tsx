@@ -85,7 +85,7 @@ export default function ActionButtons({
         </button>
         <a
           href={backupUrl}
-          title="Download Backup (.zip)"
+          title="Download Portable Backup (.zip)"
           className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded"
         >
           <Download size={16} />

@@ -17,10 +17,12 @@ try {
 }
 const minLoadingMs = /^\d+$/.test(process.argv[4] ?? "") ? process.argv[4] : "6500";
 
-const roots = [
-  "/usr/lib/node_modules/openclaw/dist",
+const configuredActiveRoot = (process.env.OPENCLAW_ACTIVE_DIST_DIR ?? "").trim();
+const roots = Array.from(new Set([
+  configuredActiveRoot || null,
   "/home/claworc/.npm-global/lib/node_modules/openclaw/dist",
-];
+  "/usr/lib/node_modules/openclaw/dist",
+].filter(Boolean)));
 
 const loadingMessagesJs = `[${loadingMessages.map((item) => JSON.stringify(String(item))).join(", ")}]`;
 
@@ -150,7 +152,7 @@ function verifyFile(filePath) {
 
 let patchedCount = 0;
 let verifiedCount = 0;
-let verifiedSystemCount = 0;
+let verifiedActiveCount = 0;
 
 for (const root of roots) {
   if (!fs.existsSync(root)) continue;
@@ -162,16 +164,23 @@ for (const root of roots) {
     if (patchFile(filePath)) patchedCount += 1;
     if (verifyFile(filePath)) {
       verifiedCount += 1;
-      if (root.startsWith("/usr/lib/")) verifiedSystemCount += 1;
+      if (configuredActiveRoot && path.resolve(root) === path.resolve(configuredActiveRoot)) {
+        verifiedActiveCount += 1;
+      }
     }
   }
 }
 
 console.log(
-  `Slack UX patch: patched=${patchedCount} verified=${verifiedCount} verifiedSystem=${verifiedSystemCount} buffer=${bufferSize} minLoadingMs=${minLoadingMs}`,
+  `Slack UX patch: patched=${patchedCount} verified=${verifiedCount} verifiedActive=${verifiedActiveCount} buffer=${bufferSize} minLoadingMs=${minLoadingMs}`,
 );
 
-if (verifiedSystemCount === 0) {
-  console.error("Slack UX patch target not found in system OpenClaw runtime");
+if (configuredActiveRoot) {
+  if (verifiedActiveCount === 0) {
+    console.error(`Slack UX patch target not found in active OpenClaw runtime: ${configuredActiveRoot}`);
+    process.exit(1);
+  }
+} else if (verifiedCount === 0) {
+  console.error("Slack UX patch target not found in any OpenClaw runtime");
   process.exit(1);
 }

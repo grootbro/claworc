@@ -14,11 +14,14 @@ import {
   restartInstance,
   cloneInstance,
   fetchInstanceConfig,
+  fetchInstanceFeaturePacks,
   updateInstanceConfig,
+  applyInstanceFeaturePack,
   reorderInstances,
   fetchInstanceStats,
   updateInstanceImage,
   runInstanceDoctor,
+  restoreInstanceBackup,
 } from "@/api/instances";
 import type { Instance, InstanceCreatePayload, InstanceUpdatePayload } from "@/types/instance";
 
@@ -142,6 +145,18 @@ export function useUpdateInstanceImage() {
   });
 }
 
+export function useRestoreInstanceBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) =>
+      restoreInstanceBackup(id, file),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["instances", id] });
+      qc.invalidateQueries({ queryKey: ["instances"] });
+    },
+  });
+}
+
 export function useInstanceDoctor() {
   return useMutation({
     mutationFn: ({ id, fix = false }: { id: number; fix?: boolean }) =>
@@ -225,6 +240,15 @@ export function useInstanceConfig(id: number, enabled: boolean = true) {
   });
 }
 
+export function useInstanceFeaturePacks(id: number, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["instances", id, "feature-packs"],
+    queryFn: () => fetchInstanceFeaturePacks(id),
+    enabled,
+    retry: 1,
+  });
+}
+
 export function useReorderInstances() {
   const qc = useQueryClient();
   return useMutation({
@@ -255,6 +279,22 @@ export function useUpdateInstanceConfig() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["instances", variables.id, "config"] });
       qc.invalidateQueries({ queryKey: ["instances"] });
+    },
+  });
+}
+
+export function useApplyInstanceFeaturePack() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, slug, inputs }: { id: number; slug: string; inputs: Record<string, string> }) =>
+      applyInstanceFeaturePack(id, slug, inputs),
+    onSuccess: (data, variables) => {
+      qc.invalidateQueries({ queryKey: ["instances", variables.id, "feature-packs"] });
+      qc.invalidateQueries({ queryKey: ["instances", variables.id, "config"] });
+      successToast("Feature pack applied", data.slug);
+    },
+    onError: (error: any) => {
+      errorToast("Failed to apply feature pack", error);
     },
   });
 }

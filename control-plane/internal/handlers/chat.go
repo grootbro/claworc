@@ -51,8 +51,8 @@ func ChatProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get gateway tunnel port
-	port, err := getTunnelPort(uint(id), "gateway")
+	// Get gateway tunnel port info
+	info, err := getTunnelPortInfo(uint(id), "gateway")
 	if err != nil {
 		log.Printf("[chat] No gateway tunnel for instance %d: %v", id, err)
 		clientConn.Close(4500, truncate(err.Error(), 120))
@@ -68,7 +68,7 @@ func ChatProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build local WebSocket URL via tunnel
-	gwURL := fmt.Sprintf("ws://127.0.0.1:%d/gateway", port)
+	gwURL := fmt.Sprintf("ws://127.0.0.1:%d/gateway", info.localPort)
 	if gatewayToken != "" {
 		gwURL += "?token=" + gatewayToken
 	}
@@ -77,10 +77,11 @@ func ChatProxy(w http.ResponseWriter, r *http.Request) {
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	// Set Origin to loopback so the gateway's local-loopback bypass accepts the
-	// connection (the gateway enforces an origin check when client.id is
-	// "openclaw-control-ui" or mode is "webchat").
-	gwOrigin := fmt.Sprintf("http://127.0.0.1:%d", port)
+	// Match the gateway's real bind address, not the random local tunnel port.
+	// The gateway validates browser-ish clients by Origin, and using the tunnel
+	// port here causes imported instances to fail the handshake with
+	// CONTROL_UI_ORIGIN_NOT_ALLOWED.
+	gwOrigin := fmt.Sprintf("http://localhost:%d", info.remotePort)
 	log.Printf("[chat] Connecting to gateway via tunnel: %s", gwURL)
 	gwConn, _, err := websocket.Dial(dialCtx, gwURL, &websocket.DialOptions{
 		HTTPHeader: http.Header{

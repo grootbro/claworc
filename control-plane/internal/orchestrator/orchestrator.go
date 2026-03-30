@@ -23,6 +23,7 @@ type ContainerOrchestrator interface {
 	ResolveImageContract(ctx context.Context, imageRef string) (ImageContract, error)
 	BuildArchiveImage(ctx context.Context, params ArchiveImageBuildParams) (*ArchiveImageBuildResult, error)
 	ExportInstanceBackup(ctx context.Context, params InstanceArchiveExportParams) (*InstanceArchiveExportResult, error)
+	RestoreInstanceBackup(ctx context.Context, params InstanceArchiveRestoreParams) (*InstanceArchiveRestoreResult, error)
 
 	// Config
 	UpdateInstanceConfig(ctx context.Context, name string, configJSON string) error
@@ -60,12 +61,12 @@ type ArchiveImageBuildParams struct {
 }
 
 type ArchiveImageBuildResult struct {
-	ImageRef        string
-	BaseImage       string
-	DetectedRoot    string
-	DetectedLayout  string
-	Contract        ImageContract
-	Notes           []string
+	ImageRef       string
+	BaseImage      string
+	DetectedRoot   string
+	DetectedLayout string
+	Contract       ImageContract
+	Notes          []string
 }
 
 type InstanceArchiveExportParams struct {
@@ -75,23 +76,35 @@ type InstanceArchiveExportParams struct {
 }
 
 type InstanceArchiveExportResult struct {
-	ArchivePath    string
-	ArchiveName    string
-	RootDirectory  string
-	Format         string
-	CleanupPath    string
+	ArchivePath   string
+	ArchiveName   string
+	RootDirectory string
+	Format        string
+	CleanupPath   string
+}
+
+type InstanceArchiveRestoreParams struct {
+	Name        string
+	ArchiveName string
+	ArchivePath string
+}
+
+type InstanceArchiveRestoreResult struct {
+	DetectedRoot   string
+	DetectedLayout string
+	Notes          []string
 }
 
 type CreateParams struct {
-	Name            string
-	CPURequest      string
-	CPULimit        string
-	MemoryRequest   string
-	MemoryLimit     string
-	StorageHomebrew string
-	StorageHome     string
-	ContainerImage  string
-	VNCResolution   string
+	Name               string
+	CPURequest         string
+	CPULimit           string
+	MemoryRequest      string
+	MemoryLimit        string
+	StorageHomebrew    string
+	StorageHome        string
+	ContainerImage     string
+	VNCResolution      string
 	Timezone           string
 	UserAgent          string
 	ImageMode          string
@@ -99,7 +112,7 @@ type CreateParams struct {
 	OpenClawHome       string
 	BrowserMetricsPath string
 	EnvVars            map[string]string
-	OnProgress      func(string)
+	OnProgress         func(string)
 }
 
 type UpdateResourcesParams struct {
@@ -111,7 +124,7 @@ type UpdateResourcesParams struct {
 
 type ContainerStats struct {
 	CPUUsageMillicores int64   `json:"cpu_usage_millicores"`
-	CPUUsagePercent    float64 `json:"cpu_usage_percent"`  // percentage of CPU limit
+	CPUUsagePercent    float64 `json:"cpu_usage_percent"` // percentage of CPU limit
 	MemoryUsageBytes   int64   `json:"memory_usage_bytes"`
 	MemoryLimitBytes   int64   `json:"memory_limit_bytes"` // from container runtime
 }

@@ -7,7 +7,7 @@ Claworc can now treat custom **prebuilt OpenClaw images** as first-class agent i
 In the dashboard:
 
 1. Keep **Settings → Agent Image → Default Managed Agent Image** for your normal base image.
-2. On an existing bot, use **Download Backup (.zip)** in the instance detail page when you want a restore-ready archive of its current OpenClaw home.
+2. On an existing bot, use **Portable Backup (.zip)** in the instance detail page when you want a clean, restore-ready archive of its current OpenClaw state.
 3. In **Create Instance**, choose **Prebuilt Image** when you want to start from a baked OpenClaw home.
 4. Paste the custom image reference and click **Inspect image** to preview the resolved runtime contract.
 5. Create the instance as usual.
@@ -20,8 +20,8 @@ Managed and prebuilt images now have distinct roles in the UI:
 
 For native round-tripping:
 
-- **Backup Export (.zip)**: downloads a restore-ready archive from an existing bot's current home volume.
-- **Advanced Backup (.tgz)**: same content, but in `tar.gz` format for Linux-oriented workflows.
+- **Portable Backup (.zip)**: exports only `~/.openclaw/` inside a single top-level folder. This is the default archive for Archive Import and native restore into an existing instance.
+- **Advanced Backup (.tgz)**: captures the full home volume in `tar.gz` format, including browser profiles, caches, and tool state, for Linux-oriented full snapshots.
 
 The inspection step pulls the image if needed and shows the resolved:
 
@@ -105,7 +105,7 @@ Validation rules:
 - use `.zip`, `.tar`, `.tar.gz`, or `.tgz`
 - if Claworc detects a nested root, the UI shows which folder it selected before you create the instance
 
-Backup exports are generated with a single top-level folder that already contains the bot home. That means the default `.zip` backup can be uploaded back into **Archive Import** without repacking it first.
+Portable backup exports are generated with a single top-level folder that already contains `.openclaw/`. That means the default `.zip` backup can be uploaded back into **Archive Import** without repacking it first.
 
 Claworc still mounts a persistent home volume for the instance. On first create, Docker initializes that empty volume from the image path, so the baked OpenClaw home becomes the starting state.
 

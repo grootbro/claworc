@@ -32,6 +32,7 @@ import (
 var frontendFS embed.FS
 
 var BuildDate string
+var Version string
 
 func main() {
 	// Handle CLI commands before starting the server
@@ -132,6 +133,7 @@ func main() {
 	}()
 
 	handlers.BuildDate = BuildDate
+	handlers.Version = Version
 
 	if err := orchestrator.InitOrchestrator(ctx); err != nil {
 		log.Printf("WARNING: %v", err)
@@ -245,6 +247,8 @@ func main() {
 			r.Post("/instances/{id}/doctor", handlers.RunInstanceDoctor)
 			r.Get("/instances/{id}/config", handlers.GetInstanceConfig)
 			r.Put("/instances/{id}/config", handlers.UpdateInstanceConfig)
+			r.Get("/instances/{id}/feature-packs", handlers.ListInstanceFeaturePacks)
+			r.Post("/instances/{id}/feature-packs/{slug}/apply", handlers.ApplyInstanceFeaturePack)
 			r.Get("/instances/{id}/logs", handlers.StreamLogs)
 			r.Get("/instances/{id}/ssh-test", handlers.SSHConnectionTest)
 			r.Get("/instances/{id}/ssh-status", handlers.GetSSHStatus)
@@ -254,6 +258,7 @@ func main() {
 			r.Get("/instances/{id}/stats", handlers.GetInstanceStats)
 			r.Post("/instances/{id}/update-image", handlers.UpdateInstanceImage)
 			r.Get("/instances/{id}/backup-archive", handlers.ExportInstanceBackup)
+			r.Post("/instances/{id}/restore-backup", handlers.RestoreInstanceBackup)
 			r.Get("/ssh-fingerprint", handlers.GetSSHFingerprint)
 
 			// Files
@@ -327,6 +332,12 @@ func main() {
 				r.Post("/users/{userId}/reset-password", handlers.ResetUserPassword)
 			})
 		})
+	})
+
+	// Public plugin webhook proxy for channel integrations.
+	r.Group(func(r chi.Router) {
+		r.HandleFunc("/openclaw/{id}/vk/*", handlers.PublicControlWebhookProxy)
+		r.HandleFunc("/openclaw/{id}/max/*", handlers.PublicControlWebhookProxy)
 	})
 
 	// OpenClaw control proxy (top-level, outside /api/v1/)

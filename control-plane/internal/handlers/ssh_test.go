@@ -183,6 +183,18 @@ func (m *mockOrchestrator) GetInstanceStatus(_ context.Context, _ string) (strin
 func (m *mockOrchestrator) GetInstanceImageInfo(_ context.Context, _ string) (string, error) {
 	return "", nil
 }
+func (m *mockOrchestrator) ResolveImageContract(_ context.Context, _ string) (orchestrator.ImageContract, error) {
+	return orchestrator.NormalizeImageContract(orchestrator.ImageContract{}), nil
+}
+func (m *mockOrchestrator) BuildArchiveImage(_ context.Context, _ orchestrator.ArchiveImageBuildParams) (*orchestrator.ArchiveImageBuildResult, error) {
+	return nil, nil
+}
+func (m *mockOrchestrator) ExportInstanceBackup(_ context.Context, _ orchestrator.InstanceArchiveExportParams) (*orchestrator.InstanceArchiveExportResult, error) {
+	return nil, nil
+}
+func (m *mockOrchestrator) RestoreInstanceBackup(_ context.Context, _ orchestrator.InstanceArchiveRestoreParams) (*orchestrator.InstanceArchiveRestoreResult, error) {
+	return nil, nil
+}
 func (m *mockOrchestrator) UpdateInstanceConfig(_ context.Context, _, _ string) error { return nil }
 func (m *mockOrchestrator) CloneVolumes(_ context.Context, _, _ string) error         { return nil }
 func (m *mockOrchestrator) ConfigureSSHAccess(_ context.Context, _ uint, _ string) error {

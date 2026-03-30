@@ -83,6 +83,10 @@ func (k *KubernetesOrchestrator) ExportInstanceBackup(_ context.Context, _ Insta
 	return nil, fmt.Errorf("instance backup export is only supported on the Docker backend")
 }
 
+func (k *KubernetesOrchestrator) RestoreInstanceBackup(_ context.Context, _ InstanceArchiveRestoreParams) (*InstanceArchiveRestoreResult, error) {
+	return nil, fmt.Errorf("instance backup restore is only supported on the Docker backend")
+}
+
 func (k *KubernetesOrchestrator) ns() string {
 	return config.Cfg.K8sNamespace
 }

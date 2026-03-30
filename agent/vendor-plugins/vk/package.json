@@ -1,0 +1,42 @@
+{
+  "name": "@openclaw/vk",
+  "version": "2026.3.30-beta.0",
+  "private": true,
+  "description": "OpenClaw VK channel plugin",
+  "type": "module",
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.28-beta.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "vk",
+      "label": "VK",
+      "selectionLabel": "VK (Community Messages)",
+      "detailLabel": "VK Community Bot",
+      "docsPath": "/channels/vk",
+      "docsLabel": "vk",
+      "blurb": "VK Community Messages for Russia/CIS customer support and lead intake.",
+      "aliases": [
+        "vkontakte"
+      ],
+      "order": 82,
+      "quickstartAllowFrom": true,
+      "markdownCapable": false
+    },
+    "bundle": {
+      "stageRuntimeDependencies": true
+    }
+  }
+}

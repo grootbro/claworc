@@ -8,7 +8,7 @@ export interface Instance {
   id: number;
   name: string;
   display_name: string;
-  status: "creating" | "running" | "restarting" | "stopping" | "stopped" | "error";
+  status: "creating" | "running" | "restarting" | "restoring" | "stopping" | "stopped" | "error";
   status_message?: string;
   cpu_request: string;
   cpu_limit: string;
@@ -152,4 +152,47 @@ export interface ArchiveImageImportResult {
   browser_metrics_path: string;
   prebuilt_ready: boolean;
   notes: string[];
+}
+
+export interface InstanceBackupRestoreResult {
+  detected_root: string;
+  detected_layout: string;
+  restarted: boolean;
+  notes: string[];
+}
+
+export interface FeaturePackInput {
+  key: string;
+  label: string;
+  description: string;
+  placeholder?: string;
+  type: "text" | "textarea" | "boolean" | "secret";
+  required: boolean;
+  default_value?: string;
+}
+
+export interface InstanceFeaturePack {
+  slug: string;
+  name: string;
+  summary: string;
+  category: string;
+  version: string;
+  available: boolean;
+  availability_note?: string;
+  restarts_gateway: boolean;
+  inputs: FeaturePackInput[];
+  applied: boolean;
+  applied_at?: string;
+  current_inputs?: Record<string, string>;
+  notes?: string[];
+}
+
+export interface ApplyFeaturePackResult {
+  slug: string;
+  version: string;
+  applied_at: string;
+  restarted: boolean;
+  changed_files: number;
+  current_inputs?: Record<string, string>;
+  notes?: string[];
 }

@@ -8,6 +8,7 @@ import {
   User,
   BarChart2,
   BookOpen,
+  Boxes,
 } from "lucide-react";
 import { useHealth } from "@/hooks/useHealth";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,6 +35,14 @@ export default function Sidebar() {
   };
 
   const isActive = (path: string) => location.pathname === path;
+  const buildDateLabel = health?.build_date
+    ? `Built ${new Date(health.build_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })}`
+    : "Build date unavailable";
+  const versionLabel = health?.version ? `Version ${health.version}` : "Version DEV";
 
   const navLinkClass = (path: string) =>
     `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
@@ -117,6 +126,12 @@ export default function Sidebar() {
                 Skills
               </span>
             </Link>
+            <Link to="/feature-packs" className={navLinkClass("/feature-packs")}>
+              <Boxes size={18} className="shrink-0" />
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden text-sm">
+                Feature Packs
+              </span>
+            </Link>
             <Link to="/users" className={navLinkClass("/users")}>
               <Users size={18} className="shrink-0" />
               <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden text-sm">
@@ -143,11 +158,10 @@ export default function Sidebar() {
       {/* Build info */}
       {health && (
         <div className="px-4 pb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <span className="text-xs text-gray-400 whitespace-nowrap">
-            {health.build_date
-              ? `Built ${new Date(health.build_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-              : "Build: DEV"}
-          </span>
+          <div className="flex flex-col gap-0.5 whitespace-nowrap">
+            <span className="text-xs font-medium text-gray-500">{versionLabel}</span>
+            <span className="text-xs text-gray-400">{buildDateLabel}</span>
+          </div>
         </div>
       )}
 

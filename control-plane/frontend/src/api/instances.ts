@@ -1,6 +1,7 @@
 import client from "./client";
 import type {
   ArchiveImageImportResult,
+  InstanceBackupRestoreResult,
   Instance,
   InstanceDetail,
   InstanceCreatePayload,
@@ -10,6 +11,8 @@ import type {
   InstanceStats,
   InstanceDoctorResult,
   ImageContractInspection,
+  InstanceFeaturePack,
+  ApplyFeaturePackResult,
 } from "@/types/instance";
 
 export async function fetchInstances(): Promise<Instance[]> {
@@ -83,6 +86,21 @@ export async function exportInstanceBackup(
   return { blob, filename };
 }
 
+export async function restoreInstanceBackup(
+  id: number,
+  file: File,
+): Promise<InstanceBackupRestoreResult> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const { data } = await client.post<InstanceBackupRestoreResult>(
+    `/instances/${id}/restore-backup`,
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return data;
+}
+
 export async function updateInstance(
   id: number,
   payload: InstanceUpdatePayload,
@@ -129,6 +147,15 @@ export async function fetchInstanceConfig(
   return data;
 }
 
+export async function fetchInstanceFeaturePacks(
+  id: number,
+): Promise<InstanceFeaturePack[]> {
+  const { data } = await client.get<{ feature_packs: InstanceFeaturePack[] }>(
+    `/instances/${id}/feature-packs`,
+  );
+  return data.feature_packs;
+}
+
 export async function updateInstanceConfig(
   id: number,
   config: string,
@@ -136,6 +163,18 @@ export async function updateInstanceConfig(
   const { data } = await client.put<InstanceConfigUpdate>(
     `/instances/${id}/config`,
     { config },
+  );
+  return data;
+}
+
+export async function applyInstanceFeaturePack(
+  id: number,
+  slug: string,
+  inputs: Record<string, string>,
+): Promise<ApplyFeaturePackResult> {
+  const { data } = await client.post<ApplyFeaturePackResult>(
+    `/instances/${id}/feature-packs/${encodeURIComponent(slug)}/apply`,
+    { inputs },
   );
   return data;
 }

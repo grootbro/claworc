@@ -7,6 +7,29 @@ export OPENCLAW_CONFIG_DIR="$OPENCLAW_HOME/.openclaw"
 export OPENCLAW_CONFIG_FILE="$OPENCLAW_CONFIG_DIR/openclaw.json"
 export OPENCLAW_TMPDIR=/tmp/openclaw
 export OPENCLAW_LOG_DIR=/var/log/claworc
+export OPENCLAW_NPM_PREFIX="$OPENCLAW_HOME/.npm-global"
+export OPENCLAW_NPMRC="$OPENCLAW_HOME/.npmrc"
+export OPENCLAW_SLACK_PATCH_SCRIPT=/opt/openclaw-patches/patch-openclaw-slack-ux.mjs
+
+mkdir -p "$OPENCLAW_NPM_PREFIX/bin" "$OPENCLAW_NPM_PREFIX/lib/node_modules"
+if [ -f "$OPENCLAW_NPMRC" ]; then
+    if grep -q '^prefix=' "$OPENCLAW_NPMRC"; then
+        sed -i "s|^prefix=.*$|prefix=$OPENCLAW_NPM_PREFIX|" "$OPENCLAW_NPMRC"
+    else
+        printf '\nprefix=%s\n' "$OPENCLAW_NPM_PREFIX" >> "$OPENCLAW_NPMRC"
+    fi
+else
+    printf "prefix=%s\n" "$OPENCLAW_NPM_PREFIX" > "$OPENCLAW_NPMRC"
+fi
+chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_NPM_PREFIX" "$OPENCLAW_NPMRC"
+chmod 755 "$OPENCLAW_NPM_PREFIX" "$OPENCLAW_NPM_PREFIX/bin" "$OPENCLAW_NPM_PREFIX/lib" "$OPENCLAW_NPM_PREFIX/lib/node_modules"
+chmod 644 "$OPENCLAW_NPMRC"
+
+export PATH="$OPENCLAW_NPM_PREFIX/bin:$PATH"
+export NPM_CONFIG_PREFIX="$OPENCLAW_NPM_PREFIX"
+export npm_config_prefix="$OPENCLAW_NPM_PREFIX"
+export NPM_CONFIG_USERCONFIG="$OPENCLAW_NPMRC"
+export npm_config_userconfig="$OPENCLAW_NPMRC"
 
 mkdir -p "$OPENCLAW_TMPDIR"
 chown "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_TMPDIR"
@@ -16,8 +39,184 @@ mkdir -p "$OPENCLAW_LOG_DIR"
 chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_LOG_DIR"
 chmod 775 "$OPENCLAW_LOG_DIR"
 
+copy_user_managed_openclaw_runtime() {
+    local user_root seed_root system_root source_root
+
+    user_root="$OPENCLAW_NPM_PREFIX/lib/node_modules/openclaw"
+    seed_root="/opt/openclaw-seed/lib/node_modules/openclaw"
+    system_root="/usr/lib/node_modules/openclaw"
+
+    if [ -x "$OPENCLAW_NPM_PREFIX/bin/openclaw" ] && [ -f "$user_root/openclaw.mjs" ] && [ -d "$user_root/dist" ]; then
+        return 0
+    fi
+
+    if [ -d "$seed_root" ]; then
+        source_root="$seed_root"
+    elif [ -d "$system_root" ]; then
+        source_root="$system_root"
+    else
+        echo "OpenClaw seed package not found at $seed_root or $system_root"
+        return 1
+    fi
+
+    rm -rf "$user_root"
+    mkdir -p "$(dirname "$user_root")"
+    cp -a "$source_root" "$user_root"
+    ln -sfn ../lib/node_modules/openclaw/openclaw.mjs "$OPENCLAW_NPM_PREFIX/bin/openclaw"
+    chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_NPM_PREFIX"
+}
+
+sync_managed_openclaw_extensions() {
+    local seed_root user_root installed_root extension_id marker_path
+
+    seed_root="/opt/openclaw-seed/lib/node_modules/openclaw/extensions"
+    user_root="$OPENCLAW_NPM_PREFIX/lib/node_modules/openclaw/extensions"
+    installed_root="$OPENCLAW_CONFIG_DIR/extensions"
+
+    mkdir -p "$user_root"
+    mkdir -p "$installed_root"
+
+    for extension_id in vk; do
+        if [ -d "$seed_root/$extension_id" ]; then
+            rm -rf "$user_root/$extension_id"
+            cp -a "$seed_root/$extension_id" "$user_root/$extension_id"
+            marker_path="$installed_root/$extension_id/.claworc-managed-plugin"
+            if [ ! -e "$installed_root/$extension_id" ]; then
+                cp -a "$seed_root/$extension_id" "$installed_root/$extension_id"
+                printf 'managed\n' > "$marker_path"
+            elif [ -f "$marker_path" ]; then
+                rm -rf "$installed_root/$extension_id"
+                cp -a "$seed_root/$extension_id" "$installed_root/$extension_id"
+                printf 'managed\n' > "$marker_path"
+            fi
+        fi
+    done
+
+    chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$user_root" "$installed_root" "$OPENCLAW_CONFIG_DIR"
+}
+
+resolve_active_openclaw_dist_dir() {
+    if [ -d "$OPENCLAW_NPM_PREFIX/lib/node_modules/openclaw/dist" ]; then
+        printf '%s\n' "$OPENCLAW_NPM_PREFIX/lib/node_modules/openclaw/dist"
+        return 0
+    fi
+    if [ -d "/usr/lib/node_modules/openclaw/dist" ]; then
+        printf '%s\n' "/usr/lib/node_modules/openclaw/dist"
+        return 0
+    fi
+    return 1
+}
+
+copy_user_managed_openclaw_runtime
+sync_managed_openclaw_extensions
+export OPENCLAW_ACTIVE_DIST_DIR="$(resolve_active_openclaw_dist_dir || true)"
+
+migrate_legacy_tts_config() {
+    if [ ! -f "$OPENCLAW_CONFIG_FILE" ]; then
+        return 0
+    fi
+
+    python3 - "$OPENCLAW_CONFIG_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text())
+messages = data.get("messages")
+if not isinstance(messages, dict):
+    sys.exit(0)
+
+tts = messages.get("tts")
+if not isinstance(tts, dict):
+    sys.exit(0)
+
+providers = tts.get("providers")
+if providers is None:
+    providers = {}
+if not isinstance(providers, dict):
+    providers = {}
+
+changed = False
+for key, target in (("elevenlabs", "elevenlabs"), ("microsoft", "microsoft"), ("edge", "microsoft")):
+    value = tts.pop(key, None)
+    if not isinstance(value, dict):
+        continue
+    dest = providers.get(target)
+    if not isinstance(dest, dict):
+        dest = {}
+    for child_key, child_value in value.items():
+        dest.setdefault(child_key, child_value)
+    providers[target] = dest
+    changed = True
+
+if not changed:
+    sys.exit(0)
+
+tts["providers"] = providers
+path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+print("Migrated legacy messages.tts provider config to messages.tts.providers")
+PY
+
+    chown "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_CONFIG_FILE"
+}
+
+merge_managed_openclaw_defaults() {
+    python3 - "$OPENCLAW_CONFIG_FILE" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text())
+
+changed = False
+
+def set_nested(root, keys, value):
+    global changed
+    cur = root
+    for key in keys[:-1]:
+        child = cur.get(key)
+        if not isinstance(child, dict):
+            child = {}
+            cur[key] = child
+            changed = True
+        cur = child
+    leaf = keys[-1]
+    if cur.get(leaf) != value:
+        cur[leaf] = value
+        changed = True
+
+set_nested(data, ["gateway", "mode"], "local")
+set_nested(data, ["gateway", "bind"], "loopback")
+set_nested(data, ["discovery", "mdns", "mode"], "off")
+set_nested(data, ["agents", "defaults", "typingMode"], "message")
+set_nested(data, ["gateway", "controlUi", "dangerouslyDisableDeviceAuth"], True)
+
+gateway_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "").strip()
+if gateway_token:
+    set_nested(data, ["gateway", "auth", "token"], gateway_token)
+
+if changed:
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    print("Merged managed OpenClaw defaults into existing config")
+PY
+
+    chown "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_CONFIG_FILE"
+}
+
 run_openclaw() {
-    s6-setuidgid "$OPENCLAW_USER" env HOME="$OPENCLAW_HOME" TMPDIR="$OPENCLAW_TMPDIR" openclaw "$@"
+    s6-setuidgid "$OPENCLAW_USER" env \
+        HOME="$OPENCLAW_HOME" \
+        TMPDIR="$OPENCLAW_TMPDIR" \
+        PATH="$PATH" \
+        NPM_CONFIG_PREFIX="$OPENCLAW_NPM_PREFIX" \
+        npm_config_prefix="$OPENCLAW_NPM_PREFIX" \
+        NPM_CONFIG_USERCONFIG="$OPENCLAW_NPMRC" \
+        npm_config_userconfig="$OPENCLAW_NPMRC" \
+        OPENCLAW_ACTIVE_DIST_DIR="$OPENCLAW_ACTIVE_DIST_DIR" \
+        openclaw "$@"
 }
 
 if [ ! -f "$OPENCLAW_CONFIG_FILE" ]; then
@@ -32,18 +231,28 @@ if [ ! -f "$OPENCLAW_CONFIG_FILE" ]; then
     fi
 fi
 
-run_openclaw config set gateway.mode local
-run_openclaw config set gateway.bind loopback
-run_openclaw config set discovery.mdns.mode off
-run_openclaw config set agents.defaults.typingMode message
-run_openclaw config set gateway.controlUi.dangerouslyDisableDeviceAuth true
+migrate_legacy_tts_config
+merge_managed_openclaw_defaults
 
 DEFAULT_SLACK_STREAM_BUFFER_SIZE=32
 DEFAULT_SLACK_LOADING_MESSAGES='["Thinking","Analyzing","Planning","Drafting","Polishing"]'
 DEFAULT_SLACK_MIN_LOADING_MS=6500
 
 apply_slack_stream_patch() {
-    local buffer_size loading_messages min_loading_ms patch_status
+    local buffer_size loading_messages min_loading_ms enabled
+
+    enabled="${OPENCLAW_APPLY_SLACK_UX_PATCH:-0}"
+    case "$enabled" in
+        0|false|FALSE|False|no|NO)
+            echo "Skipping Slack UX patch"
+            return 0
+            ;;
+    esac
+
+    if [ ! -f "$OPENCLAW_SLACK_PATCH_SCRIPT" ]; then
+        echo "Slack UX patch script not found at $OPENCLAW_SLACK_PATCH_SCRIPT; skipping"
+        return 0
+    fi
 
     buffer_size="${OPENCLAW_SLACK_STREAM_BUFFER_SIZE:-$DEFAULT_SLACK_STREAM_BUFFER_SIZE}"
     case "$buffer_size" in
@@ -62,24 +271,26 @@ apply_slack_stream_patch() {
             ;;
     esac
 
-    node /opt/openclaw-patches/patch-openclaw-slack-ux.mjs \
+    if ! node "$OPENCLAW_SLACK_PATCH_SCRIPT" \
         "$buffer_size" \
         "$loading_messages" \
-        "$min_loading_ms"
-    patch_status=$?
-    if [ "$patch_status" -ne 0 ]; then
-        echo "Slack stream patch failed"
-        return "$patch_status"
+        "$min_loading_ms"; then
+        echo "Slack UX patch skipped because no compatible runtime target was found"
     fi
 }
 
 apply_slack_stream_patch
 
-if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
-    run_openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
-fi
-
 chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$OPENCLAW_CONFIG_DIR"
 
 echo "Starting OpenClaw Gateway (foreground) as $OPENCLAW_USER..."
-exec s6-setuidgid "$OPENCLAW_USER" env HOME="$OPENCLAW_HOME" TMPDIR="$OPENCLAW_TMPDIR" sh -c 'tail -f /dev/null | openclaw gateway run >> /var/log/claworc/openclaw.log 2>&1'
+exec s6-setuidgid "$OPENCLAW_USER" env \
+    HOME="$OPENCLAW_HOME" \
+    TMPDIR="$OPENCLAW_TMPDIR" \
+    PATH="$PATH" \
+    NPM_CONFIG_PREFIX="$OPENCLAW_NPM_PREFIX" \
+    npm_config_prefix="$OPENCLAW_NPM_PREFIX" \
+    NPM_CONFIG_USERCONFIG="$OPENCLAW_NPMRC" \
+    npm_config_userconfig="$OPENCLAW_NPMRC" \
+    OPENCLAW_ACTIVE_DIST_DIR="$OPENCLAW_ACTIVE_DIST_DIR" \
+    sh -c 'tail -f /dev/null | openclaw gateway run >> /var/log/claworc/openclaw.log 2>&1'

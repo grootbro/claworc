@@ -97,3 +97,41 @@ func ControlProxy(w http.ResponseWriter, r *http.Request) {
 		writeConnectingPage(w, id)
 	}
 }
+
+// PublicControlWebhookProxy exposes only webhook-safe plugin paths like VK/MAX
+// without requiring the regular authenticated Control UI session.
+func PublicControlWebhookProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	path := chi.URLParam(r, "*")
+	targetPath := path
+	switch {
+	case strings.Contains(r.URL.Path, "/vk/"):
+		targetPath = "vk/" + strings.TrimPrefix(path, "/")
+	case strings.Contains(r.URL.Path, "/max/"):
+		targetPath = "max/" + strings.TrimPrefix(path, "/")
+	default:
+		writeError(w, http.StatusNotFound, "Not found")
+		return
+	}
+
+	info, err := getTunnelPortInfo(uint(id), "gateway")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	if err := proxyToLocalPort(w, r, info.localPort, targetPath); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+}

@@ -22,6 +22,7 @@ RUN apt-get update && \
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       tigervnc-standalone-server tigervnc-common \
+      chromium \
       openbox xfonts-base fonts-liberation x11-utils dbus-x11 \
       fonts-noto-color-emoji fonts-noto-cjk fonts-dejavu-core fonts-freefont-ttf \
       tzdata locales \
@@ -29,10 +30,13 @@ RUN apt-get update && \
       build-essential procps cron jq ripgrep nodejs && \
     echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen && \
     su - claworc -s /bin/bash -c "export PATH=/usr/local/bin:/usr/bin:/bin:\$PATH npm_config_script_shell=/bin/bash; npm install -g '${OPENCLAW_PACKAGE_SPEC}' 'clawhub@latest' --prefix /home/claworc/.npm-global --no-fund --no-audit --loglevel=error" && \
-    ln -sf /home/claworc/.npm-global/bin/openclaw /usr/local/bin/openclaw && \
-    ln -sf /home/claworc/.npm-global/bin/openclaw /usr/bin/openclaw && \
-    ln -sf /home/claworc/.npm-global/bin/clawhub /usr/local/bin/clawhub && \
-    ln -sf /home/claworc/.npm-global/bin/clawhub /usr/bin/clawhub && \
+    mv /home/claworc/.npm-global /opt/openclaw-seed && \
+    mkdir -p /home/claworc/.npm-global && \
+    chown -R claworc:claworc /home/claworc/.npm-global /home/claworc/.npmrc /opt/openclaw-seed && \
+    ln -sf /opt/openclaw-seed/bin/openclaw /usr/local/bin/openclaw && \
+    ln -sf /opt/openclaw-seed/bin/openclaw /usr/bin/openclaw && \
+    ln -sf /opt/openclaw-seed/bin/clawhub /usr/local/bin/clawhub && \
+    ln -sf /opt/openclaw-seed/bin/clawhub /usr/bin/clawhub && \
     curl -sSL https://install.python-poetry.org | POETRY_HOME=/usr/local python3 - && \
     rm -rf /var/lib/apt/lists/*
 
@@ -54,6 +58,8 @@ RUN mkdir -p /home/linuxbrew/.linuxbrew && \
 
 COPY browser.json /defaults/browser.json
 COPY stealth-extension/ /opt/stealth-extension/
+COPY scripts/patch-openclaw-slack-ux.mjs /opt/openclaw-patches/patch-openclaw-slack-ux.mjs
+COPY vendor-plugins/vk /opt/openclaw-seed/lib/node_modules/openclaw/extensions/vk
 COPY rootfs/ /
 
 RUN chmod +x /etc/s6-overlay/s6-rc.d/init-setup/up \

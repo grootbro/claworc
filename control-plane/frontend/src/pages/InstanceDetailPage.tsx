@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, createElement } from "react";
+import { useState, useEffect, useRef, createElement, type ChangeEvent } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { AlertTriangle, X, Maximize, ExternalLink, Download } from "lucide-react";
+import { AlertTriangle, X, Maximize, ExternalLink, Download, Upload } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import StatusBadge from "@/components/StatusBadge";
 import ActionButtons from "@/components/ActionButtons";
 import MonacoConfigEditor from "@/components/MonacoConfigEditor";
+import FeaturePackPanel from "@/components/FeaturePackPanel";
 import LogViewer from "@/components/LogViewer";
 import TerminalPanel from "@/components/TerminalPanel";
 import VncPanel from "@/components/VncPanel";
@@ -27,6 +28,7 @@ import {
   useInstanceStats,
   useUpdateInstanceImage,
   useInstanceDoctor,
+  useRestoreInstanceBackup,
 } from "@/hooks/useInstances";
 import { useProviders } from "@/hooks/useProviders";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
@@ -45,7 +47,7 @@ import { useChat } from "@/hooks/useChat";
 import type { InstanceDoctorResult } from "@/types/instance";
 import { buildSSHTooltip } from "@/utils/sshTooltip";
 
-type Tab = "chat" | "terminal" | "files" | "config" | "logs" | "settings";
+type Tab = "chat" | "terminal" | "files" | "features" | "config" | "logs" | "settings";
 
 export default function InstanceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -85,11 +87,12 @@ export default function InstanceDetailPage() {
   const updateConfigMutation = useUpdateInstanceConfig();
   const updateImageMutation = useUpdateInstanceImage();
   const doctorMutation = useInstanceDoctor();
+  const restoreBackupMutation = useRestoreInstanceBackup();
 
   // Get initial tab from URL hash (supports #files:///path pattern)
   const getTabFromHash = (): Tab => {
     const hash = location.hash.slice(1); // Remove '#'
-    if (hash === "terminal" || hash === "config" || hash === "logs" || hash === "settings") {
+    if (hash === "terminal" || hash === "features" || hash === "config" || hash === "logs" || hash === "settings") {
       return hash;
     }
     if (hash === "chat" || hash === "chrome") {
@@ -157,6 +160,8 @@ export default function InstanceDetailPage() {
   const [pendingDefaultModel, setPendingDefaultModel] = useState<string>("");
   const [doctorResult, setDoctorResult] = useState<InstanceDoctorResult | null>(null);
   const [exportingBackupFormat, setExportingBackupFormat] = useState<"zip" | "tgz" | null>(null);
+  const [restoreBackupFile, setRestoreBackupFile] = useState<File | null>(null);
+  const restoreBackupInputRef = useRef<HTMLInputElement>(null);
 
   // Update tab when hash changes
   useEffect(() => {
@@ -188,21 +193,18 @@ export default function InstanceDetailPage() {
   const desktopHook = useDesktop(instanceId, chatActivated && chatViewMode === "chat-browser" && instance?.status === "running");
   const chatHook = useChat(instanceId, chatActivated && instance?.status === "running");
 
-  // Auto-send initial messages when chat connects (delayed to survive StrictMode double-mount)
+  // Start each chat view with a clean browser session, but do not spend a
+  // model turn on hidden helper prompts. That extra round trip can consume
+  // limited quota before the user sends the first real message.
   useEffect(() => {
     if (chatHook.connectionState !== "connected" || chatInitSentRef.current) return;
     const timer = setTimeout(() => {
       chatInitSentRef.current = true;
       chatHook.clearMessages();
       chatHook.sendMessage("/new");
-      if (chatViewMode === "chat-browser") {
-        chatHook.sendMessage(
-          "You have a browser open that I can see. When I ask you to visit websites, search for information online, or interact with web pages, use the built-in Chromium browser (via computer/browser tools) — do NOT use the web_search skill. Navigate directly in the browser instead."
-        );
-      }
     }, 300);
     return () => clearTimeout(timer);
-  }, [chatHook.connectionState, chatHook.sendMessage, chatHook.clearMessages, chatViewMode]);
+  }, [chatHook.connectionState, chatHook.sendMessage, chatHook.clearMessages]);
 
   // Reset init flag when switching away from chat tab so re-entering starts fresh
   useEffect(() => {
@@ -382,10 +384,13 @@ export default function InstanceDetailPage() {
   const handleExportBackup = async (format: "zip" | "tgz") => {
     const toastId = `backup-export-${format}`;
     setExportingBackupFormat(format);
+    const isPortable = format === "zip";
     toast.custom(
       createElement(AppToast, {
         title: "Preparing backup...",
-        description: `Building a restore-ready .${format} archive from the current bot home.`,
+        description: isPortable
+          ? "Building a portable restore-ready .zip from the current .openclaw state."
+          : "Building a full-home .tgz snapshot, including browser and tool caches.",
         status: "loading",
         toastId,
       }),
@@ -398,7 +403,9 @@ export default function InstanceDetailPage() {
       toast.custom(
         createElement(AppToast, {
           title: "Backup ready",
-          description: `${filename} downloaded. You can re-import it through Archive Import later.`,
+          description: isPortable
+            ? `${filename} downloaded. This portable backup is ready for Archive Import or restore into this instance.`
+            : `${filename} downloaded. This advanced snapshot includes the full home, including browser/tool state.`,
           status: "success",
           toastId,
         }),
@@ -419,6 +426,67 @@ export default function InstanceDetailPage() {
       setExportingBackupFormat(null);
     }
   };
+
+  const handleRestoreBackupFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+    setRestoreBackupFile(nextFile);
+    event.target.value = "";
+  };
+
+  const handleRestoreBackup = () => {
+    if (!restoreBackupFile || !instance) return;
+
+    const restartNote = instance.status === "running"
+      ? " The instance will be stopped, updated, and started again."
+      : " The instance will stay stopped after the restore.";
+    if (!window.confirm(`Restore "${restoreBackupFile.name}" into "${instance.display_name}"? This replaces the current bot home.${restartNote}`)) {
+      return;
+    }
+
+    const toastId = "backup-restore";
+    toast.custom(
+      createElement(AppToast, {
+        title: "Restoring backup...",
+        description: "Uploading the archive and replacing the current bot home.",
+        status: "loading",
+        toastId,
+      }),
+      { id: toastId, duration: Infinity },
+    );
+
+    restoreBackupMutation.mutate(
+      { id: instanceId, file: restoreBackupFile },
+      {
+        onSuccess: (result) => {
+          const note = result.notes[0];
+          setRestoreBackupFile(null);
+          toast.custom(
+            createElement(AppToast, {
+              title: "Backup restored",
+              description: note ?? (result.restarted ? "Archive applied and the instance was restarted." : "Archive applied. The instance remains stopped."),
+              status: "success",
+              toastId,
+            }),
+            { id: toastId, duration: 5000 },
+          );
+        },
+        onError: (err: unknown) => {
+          const axiosMsg = (err as any)?.response?.data?.error ?? (err as any)?.response?.data?.detail;
+          const message = axiosMsg ?? (err instanceof Error ? err.message : "Failed to restore backup archive");
+          toast.custom(
+            createElement(AppToast, {
+              title: "Backup restore failed",
+              description: message,
+              status: "error",
+              toastId,
+            }),
+            { id: toastId, duration: 6000 },
+          );
+        },
+      },
+    );
+  };
+
   const formatBytes = (bytes: number): string => {
     if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}Gi`;
     if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)}Mi`;
@@ -545,6 +613,7 @@ export default function InstanceDetailPage() {
     { key: "chat", label: "Chat" },
     { key: "terminal", label: "Terminal" },
     { key: "files", label: "Files" },
+    { key: "features", label: "Features" },
     { key: "config", label: "Config" },
     { key: "logs", label: "Logs" },
     { key: "settings", label: "Settings" },
@@ -664,7 +733,7 @@ export default function InstanceDetailPage() {
                       className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Download size={14} />
-                      {exportingBackupFormat === "zip" ? "Preparing .zip..." : "Download Backup (.zip)"}
+                      {exportingBackupFormat === "zip" ? "Preparing .zip..." : "Portable Backup (.zip)"}
                     </button>
                     <button
                       type="button"
@@ -672,10 +741,54 @@ export default function InstanceDetailPage() {
                       disabled={exportingBackupFormat !== null}
                       className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {exportingBackupFormat === "tgz" ? "Preparing .tgz..." : "Advanced: .tgz"}
+                      {exportingBackupFormat === "tgz" ? "Preparing .tgz..." : "Advanced: Full Home (.tgz)"}
                     </button>
                     <span className="text-xs text-gray-500">
-                      Exports the current OpenClaw home as a restore-ready archive for Archive Import.
+                      `.zip` exports only `.openclaw` for clean Archive Import and native restore. `.tgz` keeps the full home, including browser/tool caches.
+                    </span>
+                  </div>
+                  <input
+                    ref={restoreBackupInputRef}
+                    type="file"
+                    accept=".zip,.tar,.tar.gz,.tgz,application/zip,application/gzip"
+                    onChange={handleRestoreBackupFileChange}
+                    className="hidden"
+                  />
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => restoreBackupInputRef.current?.click()}
+                      disabled={restoreBackupMutation.isPending}
+                      className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Upload size={14} />
+                      {restoreBackupMutation.isPending ? "Restoring..." : "Upload Backup Into This Instance"}
+                    </button>
+                    {restoreBackupFile ? (
+                      <>
+                        <span className="rounded-md bg-gray-100 px-2.5 py-1 text-xs text-gray-700">
+                          {restoreBackupFile.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleRestoreBackup}
+                          disabled={restoreBackupMutation.isPending}
+                          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Apply Backup
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRestoreBackupFile(null)}
+                          disabled={restoreBackupMutation.isPending}
+                          className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Clear
+                        </button>
+                      </>
+                    ) : null}
+                    <span className="text-xs text-gray-500">
+                      Replaces the current bot home from a previously downloaded backup. If the instance is running, Claworc stops it, restores the archive, then starts it again.
                     </span>
                   </div>
                 </dd>
@@ -1213,6 +1326,18 @@ export default function InstanceDetailPage() {
         </div>
       )}
 
+      {activeTab === "features" && (
+        <div className="space-y-4">
+          {instance.status !== "running" ? (
+            <div className="flex items-center justify-center min-h-[240px] text-gray-500 text-sm bg-white rounded-lg border border-gray-200">
+              Instance must be running to apply features.
+            </div>
+          ) : (
+            <FeaturePackPanel instanceId={instanceId} enabled={activeTab === "features"} />
+          )}
+        </div>
+      )}
+
       {activeTab === "config" && (
         <div className="flex flex-col gap-4 h-[calc(100vh-142px)] min-h-[400px]">
           {instance.status !== "running" ? (
@@ -1221,7 +1346,7 @@ export default function InstanceDetailPage() {
             </div>
           ) : (
             <>
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex-1 min-h-0">
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden min-h-0 flex-1">
                 <MonacoConfigEditor
                   value={currentConfig}
                   onChange={(v) => setEditedConfig(v ?? "{}")}
