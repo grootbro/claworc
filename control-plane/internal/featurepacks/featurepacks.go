@@ -315,7 +315,7 @@ var packRegistry = map[string]Definition{
 	"telegram-topic-context": {
 		Slug:            "telegram-topic-context",
 		Name:            "Telegram Topic Context",
-		Summary:         "Tunes Telegram group and forum-topic behavior for contextual replies, anchored responses, and calmer mention handling.",
+		Summary:         "Tunes Telegram group, forum-topic, and direct-message behavior for contextual replies, anchored responses, and calmer mention handling.",
 		Category:        "channel-behavior",
 		Version:         "1",
 		Available:       true,
@@ -325,6 +325,15 @@ var packRegistry = map[string]Definition{
 				Key:          "group_policy",
 				Label:        "Telegram group policy",
 				Description:  "Use `open` to allow contextual group replies, or `mention` to keep the bot stricter.",
+				Placeholder:  "open",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "open",
+			},
+			{
+				Key:          "dm_policy",
+				Label:        "Telegram direct-message policy",
+				Description:  "Use `open` for customer-facing bots that should answer in personal chats, or `pairing` only for stricter gated operator setups.",
 				Placeholder:  "open",
 				Type:         InputTypeText,
 				Required:     false,
@@ -1254,6 +1263,10 @@ func buildTelegramTopicContextPlan(inputs map[string]string) (*Plan, error) {
 	if groupPolicy == "" {
 		groupPolicy = "open"
 	}
+	dmPolicy := strings.TrimSpace(inputs["dm_policy"])
+	if dmPolicy == "" {
+		dmPolicy = "open"
+	}
 	replyMode := strings.TrimSpace(inputs["reply_to_mode"])
 	if replyMode == "" {
 		replyMode = "first"
@@ -1282,6 +1295,10 @@ func buildTelegramTopicContextPlan(inputs map[string]string) (*Plan, error) {
 		ConfigPatch: func(root map[string]any) (bool, error) {
 			changed := false
 			changed = ensureNestedString(root, []string{"agents", "defaults", "typingMode"}, "message") || changed
+			changed = ensureNestedString(root, []string{"channels", "telegram", "dmPolicy"}, dmPolicy) || changed
+			if dmPolicy == "open" {
+				changed = setNestedValue(root, []string{"channels", "telegram", "allowFrom"}, []string{"*"}) || changed
+			}
 			changed = ensureNestedString(root, []string{"channels", "telegram", "replyToMode"}, replyMode) || changed
 			changed = ensureNestedString(root, []string{"channels", "telegram", "groupPolicy"}, groupPolicy) || changed
 			changed = ensureNestedString(root, []string{"channels", "telegram", "streaming"}, streamingMode) || changed
@@ -1289,7 +1306,7 @@ func buildTelegramTopicContextPlan(inputs map[string]string) (*Plan, error) {
 		},
 		Notes: []string{
 			"Adds Telegram topic-context guidance to AGENTS.md without overwriting the rest of the workspace",
-			"Patches Telegram reply anchoring and group behavior defaults in openclaw.json",
+			"Patches Telegram direct-message, reply anchoring, and group behavior defaults in openclaw.json",
 		},
 	}, nil
 }
