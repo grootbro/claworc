@@ -183,6 +183,7 @@ export interface InstanceFeaturePack {
   inputs: FeaturePackInput[];
   applied: boolean;
   applied_at?: string;
+  state_source?: "pack" | "live-state";
   current_inputs?: Record<string, string>;
   notes?: string[];
 }

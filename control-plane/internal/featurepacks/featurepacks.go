@@ -47,15 +47,15 @@ type InputDefinition struct {
 }
 
 type Definition struct {
-	Slug            string            `json:"slug"`
-	Name            string            `json:"name"`
-	Summary         string            `json:"summary"`
-	Category        string            `json:"category"`
-	Version         string            `json:"version"`
-	Available       bool              `json:"available"`
-	AvailabilityNote string           `json:"availability_note,omitempty"`
-	RestartsGateway bool              `json:"restarts_gateway"`
-	Inputs          []InputDefinition `json:"inputs"`
+	Slug             string            `json:"slug"`
+	Name             string            `json:"name"`
+	Summary          string            `json:"summary"`
+	Category         string            `json:"category"`
+	Version          string            `json:"version"`
+	Available        bool              `json:"available"`
+	AvailabilityNote string            `json:"availability_note,omitempty"`
+	RestartsGateway  bool              `json:"restarts_gateway"`
+	Inputs           []InputDefinition `json:"inputs"`
 
 	buildPlan func(inputs map[string]string) (*Plan, error)
 }
@@ -65,17 +65,18 @@ type Status struct {
 	Applied       bool              `json:"applied"`
 	AppliedAt     string            `json:"applied_at,omitempty"`
 	CurrentInputs map[string]string `json:"current_inputs,omitempty"`
-	Notes        []string          `json:"notes,omitempty"`
+	StateSource   string            `json:"state_source,omitempty"`
+	Notes         []string          `json:"notes,omitempty"`
 }
 
 type ApplyResult struct {
-	Slug         string            `json:"slug"`
-	Version      string            `json:"version"`
-	AppliedAt    string            `json:"applied_at"`
-	Restarted    bool              `json:"restarted"`
-	ChangedFiles int               `json:"changed_files"`
+	Slug          string            `json:"slug"`
+	Version       string            `json:"version"`
+	AppliedAt     string            `json:"applied_at"`
+	Restarted     bool              `json:"restarted"`
+	ChangedFiles  int               `json:"changed_files"`
 	CurrentInputs map[string]string `json:"current_inputs,omitempty"`
-	Notes        []string          `json:"notes,omitempty"`
+	Notes         []string          `json:"notes,omitempty"`
 }
 
 type Runtime struct {
@@ -144,52 +145,52 @@ var packRegistry = map[string]Definition{
 		RestartsGateway: false,
 		Inputs: []InputDefinition{
 			{
-				Key:          "owner_telegram_user_ids",
-				Label:        "Owner Telegram user IDs",
-				Description:  "Comma or newline separated Telegram numeric user ids that should be treated as owner-level contexts.",
-				Placeholder:  "240961095",
-				Type:         InputTypeTextarea,
-				Required:     false,
+				Key:         "owner_telegram_user_ids",
+				Label:       "Owner Telegram user IDs",
+				Description: "Comma or newline separated Telegram numeric user ids that should be treated as owner-level contexts.",
+				Placeholder: "240961095",
+				Type:        InputTypeTextarea,
+				Required:    false,
 			},
 			{
-				Key:          "trusted_telegram_user_ids",
-				Label:        "Trusted Telegram user IDs",
-				Description:  "Telegram numeric user ids for trusted internal or operator contexts.",
-				Placeholder:  "237749873,7817529410",
-				Type:         InputTypeTextarea,
-				Required:     false,
+				Key:         "trusted_telegram_user_ids",
+				Label:       "Trusted Telegram user IDs",
+				Description: "Telegram numeric user ids for trusted internal or operator contexts.",
+				Placeholder: "237749873,7817529410",
+				Type:        InputTypeTextarea,
+				Required:    false,
 			},
 			{
-				Key:          "owner_vk_user_ids",
-				Label:        "Owner VK user IDs",
-				Description:  "VK numeric user ids that should be treated as owner-level contexts.",
-				Placeholder:  "269230688",
-				Type:         InputTypeTextarea,
-				Required:     false,
+				Key:         "owner_vk_user_ids",
+				Label:       "Owner VK user IDs",
+				Description: "VK numeric user ids that should be treated as owner-level contexts.",
+				Placeholder: "269230688",
+				Type:        InputTypeTextarea,
+				Required:    false,
 			},
 			{
-				Key:          "trusted_vk_user_ids",
-				Label:        "Trusted VK user IDs",
-				Description:  "VK numeric user ids for trusted internal or operator contexts.",
-				Placeholder:  "123456789",
-				Type:         InputTypeTextarea,
-				Required:     false,
+				Key:         "trusted_vk_user_ids",
+				Label:       "Trusted VK user IDs",
+				Description: "VK numeric user ids for trusted internal or operator contexts.",
+				Placeholder: "123456789",
+				Type:        InputTypeTextarea,
+				Required:    false,
 			},
 			{
-				Key:          "owner_slack_user_ids",
-				Label:        "Owner Slack user IDs",
-				Description:  "Slack user ids such as U123ABCDEF that should be treated as owner-level contexts.",
-				Placeholder:  "U0123456789",
-				Type:         InputTypeTextarea,
-				Required:     false,
+				Key:         "owner_slack_user_ids",
+				Label:       "Owner Slack user IDs",
+				Description: "Slack user ids such as U123ABCDEF that should be treated as owner-level contexts.",
+				Placeholder: "U0123456789",
+				Type:        InputTypeTextarea,
+				Required:    false,
 			},
 			{
-				Key:          "trusted_slack_user_ids",
-				Label:        "Trusted Slack user IDs",
-				Description:  "Slack user ids for trusted internal or operator contexts.",
-				Placeholder:  "U0987654321",
-				Type:         InputTypeTextarea,
-				Required:     false,
+				Key:         "trusted_slack_user_ids",
+				Label:       "Trusted Slack user IDs",
+				Description: "Slack user ids for trusted internal or operator contexts.",
+				Placeholder: "U0987654321",
+				Type:        InputTypeTextarea,
+				Required:    false,
 			},
 			{
 				Key:          "public_oracle_posture",
@@ -231,38 +232,38 @@ var packRegistry = map[string]Definition{
 		buildPlan: buildAccessTrustPlan,
 	},
 	"max-channel": {
-		Slug:            "max-channel",
-		Name:            "MAX Channel",
-		Summary:         "Bootstraps a MAX channel account with webhook-first production defaults, secret-aware inputs, and reusable operator guidance.",
-		Category:        "channel-integration",
-		Version:         "1",
-		Available:       false,
+		Slug:             "max-channel",
+		Name:             "MAX Channel",
+		Summary:          "Bootstraps a MAX channel account with webhook-first production defaults, secret-aware inputs, and reusable operator guidance.",
+		Category:         "channel-integration",
+		Version:          "1",
+		Available:        false,
 		AvailabilityNote: "Coming soon. The runtime plugin is still being hardened before production rollout.",
-		RestartsGateway: true,
+		RestartsGateway:  true,
 		Inputs: []InputDefinition{
 			{
-				Key:          "bot_token",
-				Label:        "MAX bot token",
-				Description:  "Production bot token from MAX. Leave blank on reapply to keep the current configured token.",
-				Placeholder:  "MAX_BOT_TOKEN",
-				Type:         InputTypeSecret,
-				Required:     true,
+				Key:         "bot_token",
+				Label:       "MAX bot token",
+				Description: "Production bot token from MAX. Leave blank on reapply to keep the current configured token.",
+				Placeholder: "MAX_BOT_TOKEN",
+				Type:        InputTypeSecret,
+				Required:    true,
 			},
 			{
-				Key:          "webhook_url",
-				Label:        "Public webhook URL",
-				Description:  "Public HTTPS webhook URL that MAX should call for this bot.",
-				Placeholder:  "https://bot.example.com/max/default/webhook",
-				Type:         InputTypeText,
-				Required:     true,
+				Key:         "webhook_url",
+				Label:       "Public webhook URL",
+				Description: "Public HTTPS webhook URL that MAX should call for this bot.",
+				Placeholder: "https://bot.example.com/max/default/webhook",
+				Type:        InputTypeText,
+				Required:    true,
 			},
 			{
-				Key:          "webhook_secret",
-				Label:        "Webhook secret",
-				Description:  "Optional shared secret validated against X-Max-Bot-Api-Secret. Leave blank to preserve the current secret.",
-				Placeholder:  "max-webhook-secret",
-				Type:         InputTypeSecret,
-				Required:     false,
+				Key:         "webhook_secret",
+				Label:       "Webhook secret",
+				Description: "Optional shared secret validated against X-Max-Bot-Api-Secret. Leave blank to preserve the current secret.",
+				Placeholder: "max-webhook-secret",
+				Type:        InputTypeSecret,
+				Required:    false,
 			},
 			{
 				Key:          "webhook_path",
@@ -370,52 +371,52 @@ var packRegistry = map[string]Definition{
 		RestartsGateway: true,
 		Inputs: []InputDefinition{
 			{
-				Key:          "access_token",
-				Label:        "VK community token",
-				Description:  "Community access token used for VK API calls. Leave blank on reapply to preserve the current token.",
-				Placeholder:  "vk1.xxxxx",
-				Type:         InputTypeSecret,
-				Required:     true,
+				Key:         "access_token",
+				Label:       "VK community token",
+				Description: "Community access token used for VK API calls. Leave blank on reapply to preserve the current token.",
+				Placeholder: "vk1.xxxxx",
+				Type:        InputTypeSecret,
+				Required:    true,
 			},
 			{
-				Key:          "group_id",
-				Label:        "VK group id",
-				Description:  "Numeric VK community/group id used for Callback API and outbound sends.",
-				Placeholder:  "237171848",
-				Type:         InputTypeText,
-				Required:     true,
+				Key:         "group_id",
+				Label:       "VK group id",
+				Description: "Numeric VK community/group id used for Callback API and outbound sends.",
+				Placeholder: "237171848",
+				Type:        InputTypeText,
+				Required:    true,
 			},
 			{
-				Key:          "webhook_url",
-				Label:        "Public webhook URL",
-				Description:  "Public HTTPS callback URL configured in VK Callback API.",
-				Placeholder:  "https://bot.example.com/api/channels/vk/webhook",
-				Type:         InputTypeText,
-				Required:     true,
+				Key:         "webhook_url",
+				Label:       "Public webhook URL",
+				Description: "Public HTTPS callback URL configured in VK Callback API.",
+				Placeholder: "https://bot.example.com/api/channels/vk/webhook",
+				Type:        InputTypeText,
+				Required:    true,
 			},
 			{
-				Key:          "webhook_secret",
-				Label:        "Webhook secret",
-				Description:  "Optional secret for webhook delivery checks. Leave blank to preserve the current secret.",
-				Placeholder:  "vk-webhook-secret",
-				Type:         InputTypeSecret,
-				Required:     false,
+				Key:         "webhook_secret",
+				Label:       "Webhook secret",
+				Description: "Optional secret for webhook delivery checks. Leave blank to preserve the current secret.",
+				Placeholder: "vk-webhook-secret",
+				Type:        InputTypeSecret,
+				Required:    false,
 			},
 			{
-				Key:          "callback_secret",
-				Label:        "Callback API secret",
-				Description:  "Secret string configured in VK Callback API settings. Leave blank to preserve the current secret.",
-				Placeholder:  "vk-callback-secret",
-				Type:         InputTypeSecret,
-				Required:     false,
+				Key:         "callback_secret",
+				Label:       "Callback API secret",
+				Description: "Secret string configured in VK Callback API settings. Leave blank to preserve the current secret.",
+				Placeholder: "vk-callback-secret",
+				Type:        InputTypeSecret,
+				Required:    false,
 			},
 			{
-				Key:          "confirmation_token",
-				Label:        "Confirmation token",
-				Description:  "VK Callback API confirmation token returned during server verification. Leave blank to preserve the current token.",
-				Placeholder:  "734a1162",
-				Type:         InputTypeSecret,
-				Required:     false,
+				Key:         "confirmation_token",
+				Label:       "Confirmation token",
+				Description: "VK Callback API confirmation token returned during server verification. Leave blank to preserve the current token.",
+				Placeholder: "734a1162",
+				Type:        InputTypeSecret,
+				Required:    false,
 			},
 			{
 				Key:          "dm_policy",
@@ -456,28 +457,28 @@ var packRegistry = map[string]Definition{
 		RestartsGateway: true,
 		Inputs: []InputDefinition{
 			{
-				Key:          "primary_sales_chat_id",
-				Label:        "Primary sales chat ID",
-				Description:  "Telegram chat_id for the main manager group or sales chat.",
-				Placeholder:  "-1001234567890",
-				Type:         InputTypeText,
-				Required:     false,
+				Key:         "primary_sales_chat_id",
+				Label:       "Primary sales chat ID",
+				Description: "Telegram chat_id for the main manager group or sales chat.",
+				Placeholder: "-1001234567890",
+				Type:        InputTypeText,
+				Required:    false,
 			},
 			{
-				Key:          "primary_sales_message_thread_id",
-				Label:        "Primary topic ID",
-				Description:  "Telegram forum topic id for routing leads inside a group.",
-				Placeholder:  "305",
-				Type:         InputTypeText,
-				Required:     false,
+				Key:         "primary_sales_message_thread_id",
+				Label:       "Primary topic ID",
+				Description: "Telegram forum topic id for routing leads inside a group.",
+				Placeholder: "305",
+				Type:        InputTypeText,
+				Required:    false,
 			},
 			{
-				Key:          "manager_user_ids",
-				Label:        "Direct manager user IDs",
-				Description:  "Comma or newline separated Telegram user IDs for duplicate direct delivery.",
-				Placeholder:  "240961095,237749873",
-				Type:         InputTypeTextarea,
-				Required:     false,
+				Key:         "manager_user_ids",
+				Label:       "Direct manager user IDs",
+				Description: "Comma or newline separated Telegram user IDs for duplicate direct delivery.",
+				Placeholder: "240961095,237749873",
+				Type:        InputTypeTextarea,
+				Required:    false,
 			},
 			{
 				Key:          "duplicate_direct_delivery",
@@ -580,6 +581,7 @@ func (rt *Runtime) ReadMarker(slug string) (*marker, error) {
 func ListStatuses(rt *Runtime) ([]Status, error) {
 	defs := Definitions()
 	statuses := make([]Status, 0, len(defs))
+	configRoot, _ := rt.loadConfig()
 	for _, def := range defs {
 		m, err := rt.ReadMarker(def.Slug)
 		if err != nil {
@@ -596,7 +598,19 @@ func ListStatuses(rt *Runtime) ([]Status, error) {
 		if m != nil {
 			item.AppliedAt = m.AppliedAt
 			item.CurrentInputs = copyStringMap(m.CurrentInputs)
+			item.StateSource = "pack"
 			item.Notes = append(item.Notes, fmt.Sprintf("%d managed files", len(m.ManagedFiles)))
+		} else {
+			detected, err := detectPackStatus(rt, def, configRoot)
+			if err != nil {
+				return nil, err
+			}
+			if detected != nil && detected.Applied {
+				item.Applied = true
+				item.StateSource = "live-state"
+				item.CurrentInputs = copyStringMap(detected.CurrentInputs)
+				item.Notes = append(item.Notes, detected.Notes...)
+			}
 		}
 		statuses = append(statuses, item)
 	}
@@ -761,7 +775,7 @@ func Apply(ctx context.Context, rt *Runtime, slug string, rawInputs map[string]s
 		Version:       def.Version,
 		AppliedAt:     appliedAt,
 		CurrentInputs: sanitizeInputsForMarker(def, inputs),
-		ManagedFiles: managedFiles,
+		ManagedFiles:  managedFiles,
 	}
 	markerBytes, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -863,6 +877,311 @@ func copyStringMap(src map[string]string) map[string]string {
 		dst[key] = value
 	}
 	return dst
+}
+
+type detectedStatus struct {
+	Applied       bool
+	CurrentInputs map[string]string
+	Notes         []string
+}
+
+func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*detectedStatus, error) {
+	switch def.Slug {
+	case "access-trust":
+		return detectAccessTrustStatus(rt)
+	case "telegram-topic-context":
+		return detectTelegramTopicContextStatus(rt, configRoot)
+	case "vk-channel":
+		return detectVKChannelStatus(configRoot), nil
+	case "max-channel":
+		return detectMaxChannelStatus(configRoot), nil
+	case "neodome-sales-core":
+		return detectNeoDomeSalesCoreStatus(rt)
+	default:
+		return nil, nil
+	}
+}
+
+func detectAccessTrustStatus(rt *Runtime) (*detectedStatus, error) {
+	type trustPayload struct {
+		OraclePolicy struct {
+			PublicOraclePosture     string `json:"public_oracle_posture"`
+			MessengerReplyStyle     string `json:"messenger_reply_style"`
+			IdentityExplanationMode string `json:"identity_explanation_mode"`
+			PrivateAccessRule       string `json:"private_access_rule"`
+		} `json:"oracle_policy"`
+		Roles struct {
+			Telegram struct {
+				OwnerUserIDs   []int64 `json:"owner_user_ids"`
+				TrustedUserIDs []int64 `json:"trusted_user_ids"`
+			} `json:"telegram"`
+			VK struct {
+				OwnerUserIDs   []int64 `json:"owner_user_ids"`
+				TrustedUserIDs []int64 `json:"trusted_user_ids"`
+			} `json:"vk"`
+			Slack struct {
+				OwnerUserIDs   []string `json:"owner_user_ids"`
+				TrustedUserIDs []string `json:"trusted_user_ids"`
+			} `json:"slack"`
+		} `json:"roles"`
+	}
+
+	raw, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), "trusted_contexts.json"))
+	if err != nil {
+		return nil, nil
+	}
+
+	var payload trustPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, nil
+	}
+
+	return &detectedStatus{
+		Applied: true,
+		CurrentInputs: map[string]string{
+			"owner_telegram_user_ids":   strings.Join(numericListToStrings(payload.Roles.Telegram.OwnerUserIDs), ","),
+			"trusted_telegram_user_ids": strings.Join(numericListToStrings(payload.Roles.Telegram.TrustedUserIDs), ","),
+			"owner_vk_user_ids":         strings.Join(numericListToStrings(payload.Roles.VK.OwnerUserIDs), ","),
+			"trusted_vk_user_ids":       strings.Join(numericListToStrings(payload.Roles.VK.TrustedUserIDs), ","),
+			"owner_slack_user_ids":      strings.Join(payload.Roles.Slack.OwnerUserIDs, ","),
+			"trusted_slack_user_ids":    strings.Join(payload.Roles.Slack.TrustedUserIDs, ","),
+			"public_oracle_posture":     strings.TrimSpace(payload.OraclePolicy.PublicOraclePosture),
+			"messenger_reply_style":     strings.TrimSpace(payload.OraclePolicy.MessengerReplyStyle),
+			"identity_explanation_mode": strings.TrimSpace(payload.OraclePolicy.IdentityExplanationMode),
+			"private_access_rule":       strings.TrimSpace(payload.OraclePolicy.PrivateAccessRule),
+		},
+		Notes: []string{
+			"Detected from live workspace files",
+			"trusted_contexts.json is already present on this bot",
+		},
+	}, nil
+}
+
+func detectTelegramTopicContextStatus(rt *Runtime, configRoot map[string]any) (*detectedStatus, error) {
+	groupPolicy := nestedString(configRoot, "channels", "telegram", "groupPolicy")
+	replyMode := nestedString(configRoot, "channels", "telegram", "replyToMode")
+	streamingMode := nestedString(configRoot, "channels", "telegram", "streaming")
+	dmPolicy := nestedString(configRoot, "channels", "telegram", "dmPolicy")
+
+	agentsRaw, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), "AGENTS.md"))
+	agentsHasMarker := err == nil && strings.Contains(string(agentsRaw), "claworc:feature-pack telegram-topic-context")
+	if !agentsHasMarker && groupPolicy == "" && replyMode == "" && streamingMode == "" && dmPolicy == "" {
+		return nil, nil
+	}
+
+	return &detectedStatus{
+		Applied: true,
+		CurrentInputs: map[string]string{
+			"group_policy":   groupPolicy,
+			"dm_policy":      dmPolicy,
+			"reply_to_mode":  replyMode,
+			"streaming_mode": streamingMode,
+		},
+		Notes: []string{
+			"Detected from live Telegram config",
+		},
+	}, nil
+}
+
+func detectVKChannelStatus(configRoot map[string]any) *detectedStatus {
+	if !nestedBool(configRoot, "channels", "vk", "enabled") {
+		return nil
+	}
+	groupID := nestedString(configRoot, "channels", "vk", "groupId")
+	webhookURL := nestedString(configRoot, "channels", "vk", "webhookUrl")
+	if groupID == "" && webhookURL == "" {
+		return nil
+	}
+	inputs := map[string]string{
+		"group_id":     groupID,
+		"webhook_url":  webhookURL,
+		"dm_policy":    nestedString(configRoot, "channels", "vk", "dmPolicy"),
+		"group_policy": nestedString(configRoot, "channels", "vk", "groupPolicy"),
+		"mark_as_read": strconv.FormatBool(nestedBool(configRoot, "channels", "vk", "markAsRead")),
+	}
+	if nestedString(configRoot, "channels", "vk", "accessToken") != "" {
+		inputs["access_token"] = secretConfiguredValue
+	}
+	if nestedString(configRoot, "channels", "vk", "webhookSecret") != "" {
+		inputs["webhook_secret"] = secretConfiguredValue
+	}
+	if nestedString(configRoot, "channels", "vk", "callbackSecret") != "" {
+		inputs["callback_secret"] = secretConfiguredValue
+	}
+	if nestedString(configRoot, "channels", "vk", "confirmationToken") != "" {
+		inputs["confirmation_token"] = secretConfiguredValue
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: inputs,
+		Notes: []string{
+			"Detected from live VK channel config",
+		},
+	}
+}
+
+func detectMaxChannelStatus(configRoot map[string]any) *detectedStatus {
+	if !nestedBool(configRoot, "channels", "max", "enabled") {
+		return nil
+	}
+	webhookURL := nestedString(configRoot, "channels", "max", "webhookUrl")
+	if webhookURL == "" {
+		return nil
+	}
+	inputs := map[string]string{
+		"webhook_url":         webhookURL,
+		"webhook_path":        nestedString(configRoot, "channels", "max", "webhookPath"),
+		"dm_policy":           nestedString(configRoot, "channels", "max", "dmPolicy"),
+		"group_policy":        nestedString(configRoot, "channels", "max", "groupPolicy"),
+		"format":              nestedString(configRoot, "channels", "max", "format"),
+		"requests_per_second": strconv.Itoa(nestedInt(configRoot, "channels", "max", "requestsPerSecond")),
+	}
+	if nestedString(configRoot, "channels", "max", "botToken") != "" {
+		inputs["bot_token"] = secretConfiguredValue
+	}
+	if nestedString(configRoot, "channels", "max", "webhookSecret") != "" {
+		inputs["webhook_secret"] = secretConfiguredValue
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: inputs,
+		Notes: []string{
+			"Detected from live MAX channel config",
+		},
+	}
+}
+
+func detectNeoDomeSalesCoreStatus(rt *Runtime) (*detectedStatus, error) {
+	type managerTarget struct {
+		UserID *int64 `json:"user_id"`
+	}
+	type leadTargets struct {
+		PrimarySalesChatID          *int64          `json:"primary_sales_chat_id"`
+		PrimarySalesMessageThreadID *int64          `json:"primary_sales_message_thread_id"`
+		DuplicateDirectDelivery     bool            `json:"duplicate_direct_delivery"`
+		DirectManagerTargets        []managerTarget `json:"direct_manager_targets"`
+	}
+
+	required := []string{
+		"LEAD_DATABASE.md",
+		"LEAD_ROUTING.md",
+		"scripts/lead_registry.mjs",
+		"skills/neodome-oracle-router/SKILL.md",
+	}
+	found := 0
+	for _, rel := range required {
+		if _, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), rel)); err == nil {
+			found++
+		}
+	}
+
+	targetsRaw, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), "leads", "targets.json"))
+	if err != nil && found < 2 {
+		return nil, nil
+	}
+
+	inputs := map[string]string{}
+	if err == nil {
+		var payload leadTargets
+		if json.Unmarshal(targetsRaw, &payload) == nil {
+			if payload.PrimarySalesChatID != nil {
+				inputs["primary_sales_chat_id"] = strconv.FormatInt(*payload.PrimarySalesChatID, 10)
+			}
+			if payload.PrimarySalesMessageThreadID != nil {
+				inputs["primary_sales_message_thread_id"] = strconv.FormatInt(*payload.PrimarySalesMessageThreadID, 10)
+			}
+			managerIDs := make([]string, 0, len(payload.DirectManagerTargets))
+			for _, target := range payload.DirectManagerTargets {
+				if target.UserID != nil {
+					managerIDs = append(managerIDs, strconv.FormatInt(*target.UserID, 10))
+				}
+			}
+			inputs["manager_user_ids"] = strings.Join(managerIDs, ",")
+			inputs["duplicate_direct_delivery"] = strconv.FormatBool(payload.DuplicateDirectDelivery)
+		}
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: inputs,
+		Notes: []string{
+			"Detected from live NeoDome workspace and lead routing files",
+		},
+	}, nil
+}
+
+func nestedValue(root map[string]any, keys ...string) (any, bool) {
+	if len(keys) == 0 || root == nil {
+		return nil, false
+	}
+	var current any = root
+	for _, key := range keys {
+		node, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		next, ok := node[key]
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+func nestedString(root map[string]any, keys ...string) string {
+	value, ok := nestedValue(root, keys...)
+	if !ok {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		return ""
+	}
+}
+
+func nestedBool(root map[string]any, keys ...string) bool {
+	value, ok := nestedValue(root, keys...)
+	if !ok {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), "true")
+	default:
+		return false
+	}
+}
+
+func nestedInt(root map[string]any, keys ...string) int {
+	value, ok := nestedValue(root, keys...)
+	if !ok {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case json.Number:
+		parsed, _ := typed.Int64()
+		return int(parsed)
+	case string:
+		parsed, _ := strconv.Atoi(strings.TrimSpace(typed))
+		return parsed
+	default:
+		return 0
+	}
 }
 
 func cleanRelativePath(value string) string {
@@ -1279,8 +1598,8 @@ func buildTelegramTopicContextPlan(inputs map[string]string) (*Plan, error) {
 	return &Plan{
 		TextPatches: []ManagedTextPatch{
 			{
-				RelativePath:   "AGENTS.md",
-				Marker:         "claworc:feature-pack telegram-topic-context",
+				RelativePath:    "AGENTS.md",
+				Marker:          "claworc:feature-pack telegram-topic-context",
 				CreateIfMissing: true,
 				Block: `<!-- claworc:feature-pack telegram-topic-context -->
 ## Telegram topic behavior
@@ -1554,10 +1873,10 @@ func renderNeoDomeTargetsJSON(inputs map[string]string, managerUserIDs []int64) 
 	}
 
 	payload := map[string]any{
-		"primary_sales_chat_id":            chatID,
-		"primary_sales_message_thread_id":  topicID,
-		"duplicate_direct_delivery":        boolFromInput(inputs["duplicate_direct_delivery"]),
-		"direct_manager_targets":           targets,
+		"primary_sales_chat_id":           chatID,
+		"primary_sales_message_thread_id": topicID,
+		"duplicate_direct_delivery":       boolFromInput(inputs["duplicate_direct_delivery"]),
+		"direct_manager_targets":          targets,
 	}
 
 	data, _ := json.MarshalIndent(payload, "", "  ")
@@ -1578,10 +1897,10 @@ func renderAccessTrustJSON(
 ) string {
 	payload := map[string]any{
 		"oracle_policy": map[string]any{
-			"public_oracle_posture":   publicOraclePosture,
-			"messenger_reply_style":   messengerReplyStyle,
+			"public_oracle_posture":     publicOraclePosture,
+			"messenger_reply_style":     messengerReplyStyle,
 			"identity_explanation_mode": identityExplanationMode,
-			"private_access_rule":     privateAccessRule,
+			"private_access_rule":       privateAccessRule,
 		},
 		"roles": map[string]any{
 			"telegram": map[string]any{

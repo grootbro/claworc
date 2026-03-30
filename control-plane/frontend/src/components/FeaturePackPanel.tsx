@@ -107,11 +107,14 @@ function filterMatches(pack: InstanceFeaturePack, query: string): boolean {
 }
 
 function statusBadge(pack: InstanceFeaturePack, isAvailable: boolean): { label: string; className: string } {
+  if (pack.applied) {
+    if (pack.state_source === "live-state") {
+      return { label: "Detected on this bot", className: "bg-amber-50 text-amber-700" };
+    }
+    return { label: "Installed on this bot", className: "bg-emerald-50 text-emerald-700" };
+  }
   if (!isAvailable) {
     return { label: "Coming soon", className: "bg-gray-100 text-gray-600" };
-  }
-  if (pack.applied) {
-    return { label: "Active on this bot", className: "bg-emerald-50 text-emerald-700" };
   }
   return { label: "Ready to install", className: "bg-blue-50 text-blue-700" };
 }
@@ -284,13 +287,13 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
             <h3 className="mt-3 text-lg font-semibold text-gray-900">Turn capabilities on without hand-editing the bot</h3>
             <p className="mt-1 max-w-3xl text-sm text-gray-600">
               Packs bundle workspace guidance, scripts, config patches, and runtime plugins into one safe install flow.
-              Applied packs stay visible here, with a compact preview of what is already configured on this bot.
+              Active packs stay visible here, with a compact preview of what is already configured on this bot even if it was set up before the pack engine existed.
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Installed</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Active</div>
               <div className="mt-2 flex items-center gap-2 text-lg font-semibold text-gray-900">
                 <CheckCircle2 size={18} className="text-emerald-500" />
                 {appliedCount}
@@ -444,6 +447,12 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                                     </div>
                                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
                                       <span>v{pack.version}</span>
+                                      {pack.state_source === "live-state" && (
+                                        <span className="inline-flex items-center gap-1 text-amber-700">
+                                          <LockKeyhole size={12} />
+                                          Detected from live bot state
+                                        </span>
+                                      )}
                                       {pack.restarts_gateway && (
                                         <span className="inline-flex items-center gap-1">
                                           <RefreshCcw size={12} />
