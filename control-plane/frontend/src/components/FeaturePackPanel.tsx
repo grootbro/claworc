@@ -16,7 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useApplyInstanceFeaturePack, useInstanceFeaturePacks } from "@/hooks/useInstances";
-import type { FeaturePackInput, InstanceFeaturePack } from "@/types/instance";
+import type { FeaturePackInput, FeaturePackModule, InstanceFeaturePack } from "@/types/instance";
 
 interface FeaturePackPanelProps {
   instanceId: number;
@@ -104,6 +104,44 @@ function inputPreview(
     preview.push(`${input.label}: ${normalizePreview(current)}`);
   }
   return preview;
+}
+
+interface InputSectionGroup {
+  key: string;
+  label: string;
+  description?: string;
+  inputs: FeaturePackInput[];
+}
+
+function inputSections(pack: InstanceFeaturePack): InputSectionGroup[] {
+  const sections = new Map<string, InputSectionGroup>();
+  for (const input of pack.inputs) {
+    const sectionKey = (input.section ?? "General").trim() || "General";
+    if (!sections.has(sectionKey)) {
+      sections.set(sectionKey, {
+        key: sectionKey.toLowerCase().replace(/\s+/g, "-"),
+        label: sectionKey,
+        description: input.section_description,
+        inputs: [],
+      });
+    }
+    const section = sections.get(sectionKey)!;
+    if (!section.description && input.section_description) {
+      section.description = input.section_description;
+    }
+    section.inputs.push(input);
+  }
+  return Array.from(sections.values());
+}
+
+function moduleAccentClasses(index: number): { border: string; bg: string; icon: string } {
+  const palette = [
+    { border: "border-blue-200", bg: "bg-blue-50/70", icon: "text-blue-700" },
+    { border: "border-emerald-200", bg: "bg-emerald-50/70", icon: "text-emerald-700" },
+    { border: "border-amber-200", bg: "bg-amber-50/70", icon: "text-amber-700" },
+    { border: "border-violet-200", bg: "bg-violet-50/70", icon: "text-violet-700" },
+  ] as const;
+  return palette[index % palette.length];
 }
 
 function filterMatches(pack: InstanceFeaturePack, query: string): boolean {
@@ -458,6 +496,8 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                       const previews = inputPreview(pack, pack.current_inputs);
                       const managedPreviews = inputPreview(pack, pack.managed_inputs);
                       const runtimeOverridePreviews = inputPreview(pack, pack.runtime_overrides, { includeEmpty: true });
+                      const sections = inputSections(pack);
+                      const modules: FeaturePackModule[] = pack.modules ?? [];
                       const PackIcon = categoryIcon(pack.category);
 
                       return (
@@ -509,6 +549,28 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                                 </div>
 
                                 <p className="mt-4 max-w-3xl text-sm leading-6 text-gray-600">{pack.summary}</p>
+
+                                {modules.length > 0 && (
+                                  <div className="mt-4">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+                                      Inside this pack
+                                    </div>
+                                    <div className="mt-3 grid gap-2 xl:grid-cols-2">
+                                      {modules.map((module, index) => {
+                                        const accent = moduleAccentClasses(index);
+                                        return (
+                                          <div
+                                            key={module.key}
+                                            className={`rounded-2xl border px-3 py-3 ${accent.border} ${accent.bg}`}
+                                          >
+                                            <div className={`text-sm font-semibold ${accent.icon}`}>{module.name}</div>
+                                            <div className="mt-1 text-xs leading-5 text-gray-600">{module.summary}</div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
 
                                 {previews.length > 0 && (
                                   <div className="mt-4">
@@ -644,58 +706,69 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                                       This pack does not need per-instance inputs.
                                     </div>
                                   ) : (
-                                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                      {pack.inputs.map((input) => (
-                                        <label
-                                          key={input.key}
-                                          className={`space-y-1.5 ${input.type === "textarea" ? "md:col-span-2" : ""}`}
-                                        >
-                                          <div className="flex items-center gap-2">
-                                            <div className="text-sm font-medium text-gray-800">{input.label}</div>
-                                            {input.required && (
-                                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
-                                                Required
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="text-xs leading-5 text-gray-500">{input.description}</div>
-                                          {hasConfiguredSecret(pack, input) && (
-                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700">
-                                              Secret is already configured. Leave blank to keep the current value.
-                                            </div>
+                                    <div className="mt-4 space-y-4">
+                                      {sections.map((section) => (
+                                        <div key={section.key} className="rounded-2xl border border-gray-200 bg-gray-50/60 p-4">
+                                          <div className="text-sm font-semibold text-gray-900">{section.label}</div>
+                                          {section.description && (
+                                            <div className="mt-1 text-xs leading-5 text-gray-500">{section.description}</div>
                                           )}
 
-                                          {input.type === "textarea" ? (
-                                            <textarea
-                                              rows={4}
-                                              value={values[input.key] ?? inputDefault(pack, input)}
-                                              onChange={(event) => handleChange(pack.slug, input.key, event.target.value)}
-                                              placeholder={input.placeholder}
-                                              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                            />
-                                          ) : input.type === "boolean" ? (
-                                            <div className="flex items-center justify-between rounded-xl border border-gray-300 bg-gray-50 px-3 py-3">
-                                              <div>
-                                                <div className="text-sm font-medium text-gray-800">Enabled</div>
-                                                <div className="text-xs text-gray-500">Toggle this behavior for the selected bot.</div>
-                                              </div>
-                                              <input
-                                                type="checkbox"
-                                                checked={(values[input.key] ?? inputDefault(pack, input)) === "true"}
-                                                onChange={(event) => handleChange(pack.slug, input.key, event.target.checked ? "true" : "false")}
-                                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                              />
-                                            </div>
-                                          ) : (
-                                            <input
-                                              type={input.type === "secret" ? "password" : "text"}
-                                              value={values[input.key] ?? inputDefault(pack, input)}
-                                              onChange={(event) => handleChange(pack.slug, input.key, event.target.value)}
-                                              placeholder={input.placeholder}
-                                              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                            />
-                                          )}
-                                        </label>
+                                          <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                            {section.inputs.map((input) => (
+                                              <label
+                                                key={input.key}
+                                                className={`space-y-1.5 ${input.type === "textarea" ? "md:col-span-2" : ""}`}
+                                              >
+                                                <div className="flex items-center gap-2">
+                                                  <div className="text-sm font-medium text-gray-800">{input.label}</div>
+                                                  {input.required && (
+                                                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                                                      Required
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="text-xs leading-5 text-gray-500">{input.description}</div>
+                                                {hasConfiguredSecret(pack, input) && (
+                                                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700">
+                                                    Secret is already configured. Leave blank to keep the current value.
+                                                  </div>
+                                                )}
+
+                                                {input.type === "textarea" ? (
+                                                  <textarea
+                                                    rows={4}
+                                                    value={values[input.key] ?? inputDefault(pack, input)}
+                                                    onChange={(event) => handleChange(pack.slug, input.key, event.target.value)}
+                                                    placeholder={input.placeholder}
+                                                    className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                  />
+                                                ) : input.type === "boolean" ? (
+                                                  <div className="flex items-center justify-between rounded-xl border border-gray-300 bg-white px-3 py-3">
+                                                    <div>
+                                                      <div className="text-sm font-medium text-gray-800">Enabled</div>
+                                                      <div className="text-xs text-gray-500">Toggle this behavior for the selected bot.</div>
+                                                    </div>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={(values[input.key] ?? inputDefault(pack, input)) === "true"}
+                                                      onChange={(event) => handleChange(pack.slug, input.key, event.target.checked ? "true" : "false")}
+                                                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                  </div>
+                                                ) : (
+                                                  <input
+                                                    type={input.type === "secret" ? "password" : "text"}
+                                                    value={values[input.key] ?? inputDefault(pack, input)}
+                                                    onChange={(event) => handleChange(pack.slug, input.key, event.target.value)}
+                                                    placeholder={input.placeholder}
+                                                    className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                  />
+                                                )}
+                                              </label>
+                                            ))}
+                                          </div>
+                                        </div>
                                       ))}
                                     </div>
                                   )}

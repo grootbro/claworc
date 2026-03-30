@@ -37,13 +37,21 @@ const (
 const secretConfiguredValue = "__configured__"
 
 type InputDefinition struct {
-	Key          string    `json:"key"`
-	Label        string    `json:"label"`
-	Description  string    `json:"description"`
-	Placeholder  string    `json:"placeholder,omitempty"`
-	Type         InputType `json:"type"`
-	Required     bool      `json:"required"`
-	DefaultValue string    `json:"default_value,omitempty"`
+	Key                string    `json:"key"`
+	Label              string    `json:"label"`
+	Description        string    `json:"description"`
+	Placeholder        string    `json:"placeholder,omitempty"`
+	Type               InputType `json:"type"`
+	Required           bool      `json:"required"`
+	DefaultValue       string    `json:"default_value,omitempty"`
+	Section            string    `json:"section,omitempty"`
+	SectionDescription string    `json:"section_description,omitempty"`
+}
+
+type ModuleDefinition struct {
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+	Summary string `json:"summary"`
 }
 
 type Definition struct {
@@ -56,6 +64,7 @@ type Definition struct {
 	AvailabilityNote string            `json:"availability_note,omitempty"`
 	RestartsGateway  bool              `json:"restarts_gateway"`
 	Inputs           []InputDefinition `json:"inputs"`
+	Modules          []ModuleDefinition `json:"modules,omitempty"`
 
 	buildPlan func(inputs map[string]string) (*Plan, error)
 }
@@ -145,6 +154,23 @@ var packRegistry = map[string]Definition{
 		Version:         "1",
 		Available:       true,
 		RestartsGateway: false,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "roles",
+				Name:    "Messenger roles",
+				Summary: "Defines who is treated as owner, trusted, or public across Telegram, VK, and Slack.",
+			},
+			{
+				Key:     "commands",
+				Name:    "Command access",
+				Summary: "Separates slash-command admins from broader oracle trust so owner and trusted contexts can diverge safely.",
+			},
+			{
+				Key:     "oracle-posture",
+				Name:    "Oracle posture",
+				Summary: "Sets how cautious, compact, and privacy-preserving the public-facing oracle should stay in messenger chats.",
+			},
+		},
 		Inputs: []InputDefinition{
 			{
 				Key:         "owner_telegram_user_ids",
@@ -153,6 +179,8 @@ var packRegistry = map[string]Definition{
 				Placeholder: "240961095",
 				Type:        InputTypeTextarea,
 				Required:    false,
+				Section:     "Messenger roles",
+				SectionDescription: "Who the bot should trust by default on each messenger before it reveals internal oracle context.",
 			},
 			{
 				Key:         "trusted_telegram_user_ids",
@@ -161,6 +189,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "237749873,7817529410",
 				Type:        InputTypeTextarea,
 				Required:    false,
+				Section:     "Messenger roles",
 			},
 			{
 				Key:         "command_admin_telegram_user_ids",
@@ -169,6 +198,8 @@ var packRegistry = map[string]Definition{
 				Placeholder: "240961095",
 				Type:        InputTypeTextarea,
 				Required:    false,
+				Section:     "Command access",
+				SectionDescription: "Slash-command access is stricter than oracle trust. Use this to keep command menus owner-only while trusted people still use the oracle safely.",
 			},
 			{
 				Key:         "owner_vk_user_ids",
@@ -177,6 +208,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "269230688",
 				Type:        InputTypeTextarea,
 				Required:    false,
+				Section:     "Messenger roles",
 			},
 			{
 				Key:         "trusted_vk_user_ids",
@@ -185,6 +217,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "123456789",
 				Type:        InputTypeTextarea,
 				Required:    false,
+				Section:     "Messenger roles",
 			},
 			{
 				Key:         "owner_slack_user_ids",
@@ -193,6 +226,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "U0123456789",
 				Type:        InputTypeTextarea,
 				Required:    false,
+				Section:     "Messenger roles",
 			},
 			{
 				Key:         "trusted_slack_user_ids",
@@ -201,6 +235,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "U0987654321",
 				Type:        InputTypeTextarea,
 				Required:    false,
+				Section:     "Messenger roles",
 			},
 			{
 				Key:          "public_oracle_posture",
@@ -210,6 +245,8 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "safe-public",
+				Section:      "Oracle posture",
+				SectionDescription: "Controls the tone, privacy, and access explanation style the bot uses for public users in messengers.",
 			},
 			{
 				Key:          "messenger_reply_style",
@@ -219,6 +256,7 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "compact",
+				Section:      "Oracle posture",
 			},
 			{
 				Key:          "identity_explanation_mode",
@@ -228,6 +266,7 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "high-level",
+				Section:      "Oracle posture",
 			},
 			{
 				Key:          "private_access_rule",
@@ -237,6 +276,7 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "explicit-trusted-context",
+				Section:      "Oracle posture",
 			},
 		},
 		buildPlan: buildAccessTrustPlan,
@@ -331,6 +371,18 @@ var packRegistry = map[string]Definition{
 		Version:         "1",
 		Available:       true,
 		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "group-context",
+				Name:    "Topic awareness",
+				Summary: "Tunes how the bot understands replies, forum topics, and local context before deciding whether to answer.",
+			},
+			{
+				Key:     "direct-messages",
+				Name:    "Direct chat posture",
+				Summary: "Keeps direct messages open or stricter depending on whether the bot is customer-facing or operator-only.",
+			},
+		},
 		Inputs: []InputDefinition{
 			{
 				Key:          "group_policy",
@@ -340,6 +392,8 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "open",
+				Section:      "Topic awareness",
+				SectionDescription: "These settings control how calmly and contextually the bot behaves in Telegram groups and forum topics.",
 			},
 			{
 				Key:          "dm_policy",
@@ -349,6 +403,8 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "open",
+				Section:      "Direct chat posture",
+				SectionDescription: "These settings shape how direct chats should behave for customer-facing vs operator-facing bots.",
 			},
 			{
 				Key:          "reply_to_mode",
@@ -358,6 +414,7 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "first",
+				Section:      "Topic awareness",
 			},
 			{
 				Key:          "streaming_mode",
@@ -367,6 +424,7 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "partial",
+				Section:      "Topic awareness",
 			},
 		},
 		buildPlan: buildTelegramTopicContextPlan,
@@ -379,6 +437,18 @@ var packRegistry = map[string]Definition{
 		Version:         "1",
 		Available:       true,
 		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "transport",
+				Name:    "Callback transport",
+				Summary: "Sets the VK Community Messages account, webhook transport, and secret-aware credentials.",
+			},
+			{
+				Key:     "conversation-policy",
+				Name:    "Conversation policy",
+				Summary: "Defines how open direct messages should be and how cautiously the bot behaves in VK group contexts.",
+			},
+		},
 		Inputs: []InputDefinition{
 			{
 				Key:         "access_token",
@@ -387,6 +457,8 @@ var packRegistry = map[string]Definition{
 				Placeholder: "vk1.xxxxx",
 				Type:        InputTypeSecret,
 				Required:    true,
+				Section:     "Callback transport",
+				SectionDescription: "These values wire the VK Community Messages transport itself. Secrets stay hidden on reapply.",
 			},
 			{
 				Key:         "group_id",
@@ -395,6 +467,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "237171848",
 				Type:        InputTypeText,
 				Required:    true,
+				Section:     "Callback transport",
 			},
 			{
 				Key:         "webhook_url",
@@ -403,6 +476,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "https://bot.example.com/api/channels/vk/webhook",
 				Type:        InputTypeText,
 				Required:    true,
+				Section:     "Callback transport",
 			},
 			{
 				Key:         "webhook_secret",
@@ -411,6 +485,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "vk-webhook-secret",
 				Type:        InputTypeSecret,
 				Required:    false,
+				Section:     "Callback transport",
 			},
 			{
 				Key:         "callback_secret",
@@ -419,6 +494,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "vk-callback-secret",
 				Type:        InputTypeSecret,
 				Required:    false,
+				Section:     "Callback transport",
 			},
 			{
 				Key:         "confirmation_token",
@@ -427,6 +503,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "734a1162",
 				Type:        InputTypeSecret,
 				Required:    false,
+				Section:     "Callback transport",
 			},
 			{
 				Key:          "dm_policy",
@@ -436,6 +513,8 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "pairing",
+				Section:      "Conversation policy",
+				SectionDescription: "These settings tune whether VK should behave as a safe DM channel only, or broaden toward richer live conversation handling.",
 			},
 			{
 				Key:          "group_policy",
@@ -445,6 +524,7 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeText,
 				Required:     false,
 				DefaultValue: "disabled",
+				Section:      "Conversation policy",
 			},
 			{
 				Key:          "mark_as_read",
@@ -453,6 +533,7 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeBoolean,
 				Required:     false,
 				DefaultValue: "true",
+				Section:      "Conversation policy",
 			},
 		},
 		buildPlan: buildVKChannelPlan,
@@ -465,6 +546,28 @@ var packRegistry = map[string]Definition{
 		Version:         "1",
 		Available:       true,
 		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "oracle",
+				Name:    "Oracle behavior",
+				Summary: "Installs the NeoDome oracle workspace, routing logic, and product-aware behavior for public vs trusted conversations.",
+			},
+			{
+				Key:     "lead-flow",
+				Name:    "Lead flow",
+				Summary: "Adds lead qualification, registry, numbering, and compact manager-facing lead cards that can be edited in place.",
+			},
+			{
+				Key:     "manager-routing",
+				Name:    "Manager routing",
+				Summary: "Routes qualified leads into the sales topic and optional direct manager delivery without exposing internal IDs to clients.",
+			},
+			{
+				Key:     "messenger-privacy",
+				Name:    "Messenger privacy",
+				Summary: "Keeps public onboarding compact, avoids leaking internal IDs, and stays Telegram-friendly by default.",
+			},
+		},
 		Inputs: []InputDefinition{
 			{
 				Key:         "primary_sales_chat_id",
@@ -473,6 +576,8 @@ var packRegistry = map[string]Definition{
 				Placeholder: "-1001234567890",
 				Type:        InputTypeText,
 				Required:    false,
+				Section:     "Manager routing",
+				SectionDescription: "These settings decide where qualified NeoDome leads should go after the bot has collected enough context.",
 			},
 			{
 				Key:         "primary_sales_message_thread_id",
@@ -481,6 +586,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "305",
 				Type:        InputTypeText,
 				Required:    false,
+				Section:     "Manager routing",
 			},
 			{
 				Key:         "manager_user_ids",
@@ -489,6 +595,7 @@ var packRegistry = map[string]Definition{
 				Placeholder: "240961095,237749873",
 				Type:        InputTypeTextarea,
 				Required:    false,
+				Section:     "Manager routing",
 			},
 			{
 				Key:          "duplicate_direct_delivery",
@@ -497,6 +604,7 @@ var packRegistry = map[string]Definition{
 				Type:         InputTypeBoolean,
 				Required:     false,
 				DefaultValue: "true",
+				Section:      "Manager routing",
 			},
 		},
 		buildPlan: buildNeoDomeSalesCorePlan,

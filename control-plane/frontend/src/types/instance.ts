@@ -169,6 +169,14 @@ export interface FeaturePackInput {
   type: "text" | "textarea" | "boolean" | "secret";
   required: boolean;
   default_value?: string;
+  section?: string;
+  section_description?: string;
+}
+
+export interface FeaturePackModule {
+  key: string;
+  name: string;
+  summary: string;
 }
 
 export interface InstanceFeaturePack {
@@ -181,6 +189,7 @@ export interface InstanceFeaturePack {
   availability_note?: string;
   restarts_gateway: boolean;
   inputs: FeaturePackInput[];
+  modules?: FeaturePackModule[];
   applied: boolean;
   applied_at?: string;
   state_source?: "pack" | "live-state";
