@@ -46,6 +46,35 @@ For a new bot:
 4. Pick that blueprint in the form
 5. `claworc` will create the bot first, then apply the blueprint over SSH
 
+## Blueprint Studio UX
+
+The `Blueprints` page is intentionally different from `Feature Packs`.
+It is not a raw catalog of capabilities. It is a studio for:
+
+- choosing the source or target bot first
+- seeing whether a blueprint is already aligned with that bot
+- spotting what would still be added
+- understanding whether secret re-entry will be needed
+
+Each blueprint now shows:
+
+- a `fit` state against the selected bot
+- its ordered pack chain
+- signal chips such as `Brand core`, `Trust`, `Channels`, and `Voice`
+- a clearer split between `apply now` and `use during create`
+
+This makes blueprints better for branded bot families where the operator wants to think in terms of reusable systems, not individual packs.
+
+## Good operator pattern
+
+For thematic bots such as NeoDome or Shirokov:
+
+1. Build the bot with feature packs until it feels correct
+2. Reapply packs until live drift is gone
+3. Capture the bot as a blueprint
+4. Reuse that blueprint for new brands or new instances
+5. Only then tweak bot-specific tokens, ids, or routing targets
+
 ## Good practice
 
 - Use `Feature Packs` for individual capabilities
