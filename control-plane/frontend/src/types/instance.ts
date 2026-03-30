@@ -185,6 +185,8 @@ export interface InstanceFeaturePack {
   applied_at?: string;
   state_source?: "pack" | "live-state";
   current_inputs?: Record<string, string>;
+  managed_inputs?: Record<string, string>;
+  runtime_overrides?: Record<string, string>;
   notes?: string[];
 }
 

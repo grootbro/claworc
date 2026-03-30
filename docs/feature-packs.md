@@ -60,6 +60,14 @@ Secret inputs such as channel tokens are written only into `openclaw.json`.
 Feature-pack markers store only a safe `configured` sentinel so the UI can
 show that a secret already exists without leaking it into workspace metadata.
 
+`Feature Packs` now expose two states in the UI:
+
+- `Pack-managed settings` — what the pack last applied or now owns
+- `Runtime overrides` — where the live bot currently differs from those managed settings
+
+This keeps emergency hotfixes visible instead of turning them into invisible
+"magic state" that only exists on one bot.
+
 ## Marker and backup paths
 
 Feature-pack marker:
@@ -133,6 +141,7 @@ It creates:
 Use it for:
 
 - trusted Telegram ids
+- Telegram command-admin ids
 - trusted VK ids
 - trusted Slack ids
 - public oracle posture

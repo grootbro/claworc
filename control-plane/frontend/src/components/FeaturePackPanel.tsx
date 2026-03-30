@@ -23,7 +23,7 @@ interface FeaturePackPanelProps {
   enabled?: boolean;
 }
 
-type PackFilter = "all" | "applied" | "available";
+type PackFilter = "all" | "applied" | "available" | "overrides";
 
 function inputDefault(pack: InstanceFeaturePack, input: FeaturePackInput): string {
   if (input.type === "secret") {
@@ -65,23 +65,40 @@ function normalizePreview(value: string): string {
   return `${compact.slice(0, 41)}...`;
 }
 
-function currentInputPreview(pack: InstanceFeaturePack): string[] {
+function hasRuntimeOverrides(pack: InstanceFeaturePack): boolean {
+  return Object.keys(pack.runtime_overrides ?? {}).length > 0;
+}
+
+function inputPreview(
+  pack: InstanceFeaturePack,
+  values?: Record<string, string>,
+  options: { includeEmpty?: boolean } = {},
+): string[] {
+  if (!values) {
+    return [];
+  }
   const preview: string[] = [];
   for (const input of pack.inputs) {
-    const current = pack.current_inputs?.[input.key];
+    if (!Object.prototype.hasOwnProperty.call(values, input.key)) {
+      continue;
+    }
+    const current = values[input.key];
     if (input.type === "secret") {
       if (current === "__configured__") {
         preview.push(`${input.label}: configured`);
+      } else if (options.includeEmpty) {
+        preview.push(`${input.label}: not configured`);
       }
       continue;
     }
     if (current == null || current === "") {
+      if (options.includeEmpty) {
+        preview.push(`${input.label}: none`);
+      }
       continue;
     }
     if (input.type === "boolean") {
-      if (current === "true") {
-        preview.push(`${input.label}: enabled`);
-      }
+      preview.push(`${input.label}: ${current === "true" ? "enabled" : "disabled"}`);
       continue;
     }
     preview.push(`${input.label}: ${normalizePreview(current)}`);
@@ -108,6 +125,9 @@ function filterMatches(pack: InstanceFeaturePack, query: string): boolean {
 
 function statusBadge(pack: InstanceFeaturePack, isAvailable: boolean): { label: string; className: string } {
   if (pack.applied) {
+    if (hasRuntimeOverrides(pack)) {
+      return { label: "Installed with overrides", className: "bg-amber-50 text-amber-700" };
+    }
     if (pack.state_source === "live-state") {
       return { label: "Detected on this bot", className: "bg-amber-50 text-amber-700" };
     }
@@ -200,6 +220,9 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
       if (filter === "available" && pack.applied) {
         return false;
       }
+      if (filter === "overrides" && !hasRuntimeOverrides(pack)) {
+        return false;
+      }
       if (category !== "all" && pack.category !== category) {
         return false;
       }
@@ -221,6 +244,7 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
   const totalCount = packs.length;
   const appliedCount = packs.filter((pack) => pack.applied).length;
   const availableCount = packs.filter((pack) => pack.available !== false && !pack.applied).length;
+  const overrideCount = packs.filter((pack) => hasRuntimeOverrides(pack)).length;
 
   const handleChange = (slug: string, key: string, value: string) => {
     setFormValues((current) => ({
@@ -291,7 +315,7 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Active</div>
               <div className="mt-2 flex items-center gap-2 text-lg font-semibold text-gray-900">
@@ -304,6 +328,13 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
               <div className="mt-2 flex items-center gap-2 text-lg font-semibold text-gray-900">
                 <CircleDashed size={18} className="text-blue-500" />
                 {availableCount}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Overrides</div>
+              <div className="mt-2 flex items-center gap-2 text-lg font-semibold text-gray-900">
+                <RefreshCcw size={18} className="text-amber-500" />
+                {overrideCount}
               </div>
             </div>
             <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
@@ -337,6 +368,7 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                 {([
                   { id: "all", label: "All packs" },
                   { id: "applied", label: "Active now" },
+                  { id: "overrides", label: "Needs review" },
                   { id: "available", label: "Ready to add" },
                 ] as const).map((option) => (
                   <button
@@ -423,7 +455,9 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                       const isAvailable = pack.available !== false;
                       const badge = statusBadge(pack, isAvailable);
                       const isExpanded = expanded[pack.slug] ?? false;
-                      const previews = currentInputPreview(pack);
+                      const previews = inputPreview(pack, pack.current_inputs);
+                      const managedPreviews = inputPreview(pack, pack.managed_inputs);
+                      const runtimeOverridePreviews = inputPreview(pack, pack.runtime_overrides, { includeEmpty: true });
                       const PackIcon = categoryIcon(pack.category);
 
                       return (
@@ -444,6 +478,11 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                                       <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600">
                                         {humanizeCategory(pack.category)}
                                       </span>
+                                      {runtimeOverridePreviews.length > 0 && (
+                                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                                          {runtimeOverridePreviews.length} live override{runtimeOverridePreviews.length === 1 ? "" : "s"}
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
                                       <span>v{pack.version}</span>
@@ -474,7 +513,7 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                                 {previews.length > 0 && (
                                   <div className="mt-4">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-                                      Current setup
+                                      Live effective setup
                                     </div>
                                     <div className="mt-2 flex flex-wrap gap-2">
                                       {previews.slice(0, 6).map((preview) => (
@@ -525,6 +564,47 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                             <div className="border-t border-gray-200 bg-gray-50/70 px-4 py-4 sm:px-5">
                               <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
                                 <div className="space-y-4">
+                                  {managedPreviews.length > 0 && (
+                                    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                                        <ShieldCheck size={16} className="text-emerald-500" />
+                                        Pack-managed settings
+                                      </div>
+                                      <div className="mt-3 flex flex-wrap gap-2">
+                                        {managedPreviews.map((preview) => (
+                                          <span
+                                            key={`managed-${preview}`}
+                                            className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700"
+                                          >
+                                            {preview}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {runtimeOverridePreviews.length > 0 && (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+                                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                                        <RefreshCcw size={16} className="text-amber-600" />
+                                        Runtime overrides
+                                      </div>
+                                      <div className="mt-2 text-sm text-amber-800">
+                                        The live bot currently differs from the last pack-managed settings below. Reapply if you want these overrides to become the new managed baseline.
+                                      </div>
+                                      <div className="mt-3 flex flex-wrap gap-2">
+                                        {runtimeOverridePreviews.map((preview) => (
+                                          <span
+                                            key={`override-${preview}`}
+                                            className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs text-amber-800"
+                                          >
+                                            {preview}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
                                   {pack.notes && pack.notes.length > 0 && (
                                     <div className="rounded-2xl border border-gray-200 bg-white p-4">
                                       <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">

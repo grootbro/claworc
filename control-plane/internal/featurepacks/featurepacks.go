@@ -62,11 +62,13 @@ type Definition struct {
 
 type Status struct {
 	Definition
-	Applied       bool              `json:"applied"`
-	AppliedAt     string            `json:"applied_at,omitempty"`
-	CurrentInputs map[string]string `json:"current_inputs,omitempty"`
-	StateSource   string            `json:"state_source,omitempty"`
-	Notes         []string          `json:"notes,omitempty"`
+	Applied          bool              `json:"applied"`
+	AppliedAt        string            `json:"applied_at,omitempty"`
+	StateSource      string            `json:"state_source,omitempty"`
+	CurrentInputs    map[string]string `json:"current_inputs,omitempty"`
+	ManagedInputs    map[string]string `json:"managed_inputs,omitempty"`
+	RuntimeOverrides map[string]string `json:"runtime_overrides,omitempty"`
+	Notes            []string          `json:"notes,omitempty"`
 }
 
 type ApplyResult struct {
@@ -157,6 +159,14 @@ var packRegistry = map[string]Definition{
 				Label:       "Trusted Telegram user IDs",
 				Description: "Telegram numeric user ids for trusted internal or operator contexts.",
 				Placeholder: "237749873,7817529410",
+				Type:        InputTypeTextarea,
+				Required:    false,
+			},
+			{
+				Key:         "command_admin_telegram_user_ids",
+				Label:       "Telegram command admin IDs",
+				Description: "Telegram numeric user ids allowed to see and run slash commands. Leave blank to mirror the owner Telegram ids.",
+				Placeholder: "240961095",
 				Type:        InputTypeTextarea,
 				Required:    false,
 			},
@@ -583,28 +593,41 @@ func ListStatuses(rt *Runtime) ([]Status, error) {
 	statuses := make([]Status, 0, len(defs))
 	configRoot, _ := rt.loadConfig()
 	for _, def := range defs {
+		detected, err := detectPackStatus(rt, def, configRoot)
+		if err != nil {
+			return nil, err
+		}
+
 		m, err := rt.ReadMarker(def.Slug)
 		if err != nil {
 			return nil, err
 		}
 		item := Status{
-			Definition:    def,
-			Applied:       m != nil,
-			CurrentInputs: map[string]string{},
+			Definition:       def,
+			Applied:          m != nil,
+			CurrentInputs:    map[string]string{},
+			ManagedInputs:    map[string]string{},
+			RuntimeOverrides: map[string]string{},
 		}
 		if !def.Available && strings.TrimSpace(def.AvailabilityNote) != "" {
 			item.Notes = append(item.Notes, def.AvailabilityNote)
 		}
 		if m != nil {
 			item.AppliedAt = m.AppliedAt
+			item.StateSource = "pack"
+			item.ManagedInputs = copyStringMap(m.CurrentInputs)
 			item.CurrentInputs = copyStringMap(m.CurrentInputs)
+			if detected != nil && detected.Applied {
+				item.CurrentInputs = mergeInputMaps(item.CurrentInputs, detected.CurrentInputs)
+				item.RuntimeOverrides = diffStatusInputs(def, item.ManagedInputs, detected.CurrentInputs)
+				item.Notes = append(item.Notes, detected.Notes...)
+				if overrideCount := len(item.RuntimeOverrides); overrideCount > 0 {
+					item.Notes = append(item.Notes, fmt.Sprintf("%d runtime override%s detected against the pack-managed settings", overrideCount, pluralSuffix(overrideCount)))
+				}
+			}
 			item.StateSource = "pack"
 			item.Notes = append(item.Notes, fmt.Sprintf("%d managed files", len(m.ManagedFiles)))
 		} else {
-			detected, err := detectPackStatus(rt, def, configRoot)
-			if err != nil {
-				return nil, err
-			}
 			if detected != nil && detected.Applied {
 				item.Applied = true
 				item.StateSource = "live-state"
@@ -879,6 +902,54 @@ func copyStringMap(src map[string]string) map[string]string {
 	return dst
 }
 
+func mergeInputMaps(base, overlay map[string]string) map[string]string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return map[string]string{}
+	}
+	out := copyStringMap(base)
+	for key, value := range overlay {
+		out[key] = value
+	}
+	return out
+}
+
+func diffStatusInputs(def Definition, managed, live map[string]string) map[string]string {
+	if len(def.Inputs) == 0 || len(managed) == 0 || len(live) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string)
+	for _, input := range def.Inputs {
+		managedValue, managedOK := managed[input.Key]
+		liveValue, liveOK := live[input.Key]
+		if !managedOK && !liveOK {
+			continue
+		}
+		if comparableInputValue(input.Type, managedValue) == comparableInputValue(input.Type, liveValue) {
+			continue
+		}
+		out[input.Key] = liveValue
+	}
+	return out
+}
+
+func comparableInputValue(inputType InputType, value string) string {
+	value = strings.TrimSpace(value)
+	if inputType == InputTypeBoolean {
+		if boolFromInput(value) {
+			return "true"
+		}
+		return "false"
+	}
+	return value
+}
+
+func pluralSuffix(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
+}
+
 type detectedStatus struct {
 	Applied       bool
 	CurrentInputs map[string]string
@@ -888,7 +959,7 @@ type detectedStatus struct {
 func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*detectedStatus, error) {
 	switch def.Slug {
 	case "access-trust":
-		return detectAccessTrustStatus(rt)
+		return detectAccessTrustStatus(rt, configRoot)
 	case "telegram-topic-context":
 		return detectTelegramTopicContextStatus(rt, configRoot)
 	case "vk-channel":
@@ -902,7 +973,7 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 	}
 }
 
-func detectAccessTrustStatus(rt *Runtime) (*detectedStatus, error) {
+func detectAccessTrustStatus(rt *Runtime, configRoot map[string]any) (*detectedStatus, error) {
 	type trustPayload struct {
 		OraclePolicy struct {
 			PublicOraclePosture     string `json:"public_oracle_posture"`
@@ -910,6 +981,9 @@ func detectAccessTrustStatus(rt *Runtime) (*detectedStatus, error) {
 			IdentityExplanationMode string `json:"identity_explanation_mode"`
 			PrivateAccessRule       string `json:"private_access_rule"`
 		} `json:"oracle_policy"`
+		CommandAccess struct {
+			TelegramAdminUserIDs []int64 `json:"telegram_admin_user_ids"`
+		} `json:"command_access"`
 		Roles struct {
 			Telegram struct {
 				OwnerUserIDs   []int64 `json:"owner_user_ids"`
@@ -936,23 +1010,33 @@ func detectAccessTrustStatus(rt *Runtime) (*detectedStatus, error) {
 		return nil, nil
 	}
 
+	commandAdminTelegramIDs := numericListToStrings(payload.CommandAccess.TelegramAdminUserIDs)
+	if len(commandAdminTelegramIDs) == 0 {
+		commandAdminTelegramIDs = nestedStringList(configRoot, "commands", "allowFrom", "telegram")
+	}
+	if len(commandAdminTelegramIDs) == 0 {
+		commandAdminTelegramIDs = numericListToStrings(payload.Roles.Telegram.OwnerUserIDs)
+	}
+
 	return &detectedStatus{
 		Applied: true,
 		CurrentInputs: map[string]string{
-			"owner_telegram_user_ids":   strings.Join(numericListToStrings(payload.Roles.Telegram.OwnerUserIDs), ","),
-			"trusted_telegram_user_ids": strings.Join(numericListToStrings(payload.Roles.Telegram.TrustedUserIDs), ","),
-			"owner_vk_user_ids":         strings.Join(numericListToStrings(payload.Roles.VK.OwnerUserIDs), ","),
-			"trusted_vk_user_ids":       strings.Join(numericListToStrings(payload.Roles.VK.TrustedUserIDs), ","),
-			"owner_slack_user_ids":      strings.Join(payload.Roles.Slack.OwnerUserIDs, ","),
-			"trusted_slack_user_ids":    strings.Join(payload.Roles.Slack.TrustedUserIDs, ","),
-			"public_oracle_posture":     strings.TrimSpace(payload.OraclePolicy.PublicOraclePosture),
-			"messenger_reply_style":     strings.TrimSpace(payload.OraclePolicy.MessengerReplyStyle),
-			"identity_explanation_mode": strings.TrimSpace(payload.OraclePolicy.IdentityExplanationMode),
-			"private_access_rule":       strings.TrimSpace(payload.OraclePolicy.PrivateAccessRule),
+			"owner_telegram_user_ids":         strings.Join(numericListToStrings(payload.Roles.Telegram.OwnerUserIDs), ","),
+			"trusted_telegram_user_ids":       strings.Join(numericListToStrings(payload.Roles.Telegram.TrustedUserIDs), ","),
+			"command_admin_telegram_user_ids": strings.Join(commandAdminTelegramIDs, ","),
+			"owner_vk_user_ids":               strings.Join(numericListToStrings(payload.Roles.VK.OwnerUserIDs), ","),
+			"trusted_vk_user_ids":             strings.Join(numericListToStrings(payload.Roles.VK.TrustedUserIDs), ","),
+			"owner_slack_user_ids":            strings.Join(payload.Roles.Slack.OwnerUserIDs, ","),
+			"trusted_slack_user_ids":          strings.Join(payload.Roles.Slack.TrustedUserIDs, ","),
+			"public_oracle_posture":           strings.TrimSpace(payload.OraclePolicy.PublicOraclePosture),
+			"messenger_reply_style":           strings.TrimSpace(payload.OraclePolicy.MessengerReplyStyle),
+			"identity_explanation_mode":       strings.TrimSpace(payload.OraclePolicy.IdentityExplanationMode),
+			"private_access_rule":             strings.TrimSpace(payload.OraclePolicy.PrivateAccessRule),
 		},
 		Notes: []string{
 			"Detected from live workspace files",
 			"trusted_contexts.json is already present on this bot",
+			"Telegram command access is resolved from live openclaw.json",
 		},
 	}, nil
 }
@@ -1184,6 +1268,51 @@ func nestedInt(root map[string]any, keys ...string) int {
 	}
 }
 
+func nestedStringList(root map[string]any, keys ...string) []string {
+	value, ok := nestedValue(root, keys...)
+	if !ok {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	appendValue := func(out []string, value string) []string {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return out
+		}
+		if _, ok := seen[value]; ok {
+			return out
+		}
+		seen[value] = struct{}{}
+		return append(out, value)
+	}
+
+	out := []string{}
+	switch typed := value.(type) {
+	case []string:
+		for _, item := range typed {
+			out = appendValue(out, item)
+		}
+	case []any:
+		for _, item := range typed {
+			switch value := item.(type) {
+			case string:
+				out = appendValue(out, value)
+			case json.Number:
+				out = appendValue(out, value.String())
+			case float64:
+				out = appendValue(out, strconv.FormatInt(int64(value), 10))
+			case int64:
+				out = appendValue(out, strconv.FormatInt(value, 10))
+			case int:
+				out = appendValue(out, strconv.Itoa(value))
+			}
+		}
+	case string:
+		out = appendValue(out, typed)
+	}
+	return out
+}
+
 func cleanRelativePath(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.TrimPrefix(value, "/")
@@ -1325,6 +1454,17 @@ func setNestedValue(root map[string]any, keys []string, value any) bool {
 	return true
 }
 
+func stringListToAny(values []string) []any {
+	if len(values) == 0 {
+		return []any{}
+	}
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, value)
+	}
+	return out
+}
+
 func appendNestedStringIfPresent(root map[string]any, keys []string, value string) bool {
 	if len(keys) == 0 || strings.TrimSpace(value) == "" {
 		return false
@@ -1457,6 +1597,10 @@ func buildAccessTrustPlan(inputs map[string]string) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	commandAdminTelegramIDs, err := parseNumericList(inputs["command_admin_telegram_user_ids"])
+	if err != nil {
+		return nil, err
+	}
 	ownerVKIDs, err := parseNumericList(inputs["owner_vk_user_ids"])
 	if err != nil {
 		return nil, err
@@ -1507,6 +1651,9 @@ func buildAccessTrustPlan(inputs map[string]string) (*Plan, error) {
 	if privateAccessRule == "" {
 		privateAccessRule = "explicit-trusted-context"
 	}
+	if len(commandAdminTelegramIDs) == 0 {
+		commandAdminTelegramIDs = append([]int64{}, ownerTelegramIDs...)
+	}
 
 	return &Plan{
 		Files: []ManagedFile{
@@ -1515,6 +1662,7 @@ func buildAccessTrustPlan(inputs map[string]string) (*Plan, error) {
 				Content: []byte(renderAccessTrustMarkdown(
 					ownerTelegramIDs,
 					trustedTelegramIDs,
+					commandAdminTelegramIDs,
 					ownerVKIDs,
 					trustedVKIDs,
 					ownerSlackIDs,
@@ -1530,6 +1678,7 @@ func buildAccessTrustPlan(inputs map[string]string) (*Plan, error) {
 				Content: []byte(renderAccessTrustJSON(
 					ownerTelegramIDs,
 					trustedTelegramIDs,
+					commandAdminTelegramIDs,
 					ownerVKIDs,
 					trustedVKIDs,
 					ownerSlackIDs,
@@ -1569,10 +1718,16 @@ func buildAccessTrustPlan(inputs map[string]string) (*Plan, error) {
 - For identity questions, use the configured high-level explanation mode and never echo raw ids back to the user unless the chat is manager-facing.`,
 			},
 		},
+		ConfigPatch: func(root map[string]any) (bool, error) {
+			changed := false
+			changed = setNestedValue(root, []string{"commands", "allowFrom", "telegram"}, stringListToAny(numericListToStrings(commandAdminTelegramIDs))) || changed
+			return changed, nil
+		},
 		Notes: []string{
 			"Creates ACCESS_TRUST.md as the operator-managed source of truth for owner and trusted messenger identities",
 			"Creates trusted_contexts.json so future automations can reuse the same role mapping without parsing markdown",
 			"Adds a managed AGENTS.md and TOOLS.md block so the bot checks trusted access before switching into private internal mode",
+			"Manages Telegram slash-command visibility separately from oracle trust so owner and trusted contexts can diverge cleanly",
 		},
 	}, nil
 }
@@ -1616,7 +1771,7 @@ func buildTelegramTopicContextPlan(inputs map[string]string) (*Plan, error) {
 			changed = ensureNestedString(root, []string{"agents", "defaults", "typingMode"}, "message") || changed
 			changed = ensureNestedString(root, []string{"channels", "telegram", "dmPolicy"}, dmPolicy) || changed
 			if dmPolicy == "open" {
-				changed = setNestedValue(root, []string{"channels", "telegram", "allowFrom"}, []string{"*"}) || changed
+				changed = setNestedValue(root, []string{"channels", "telegram", "allowFrom"}, stringListToAny([]string{"*"})) || changed
 			}
 			changed = ensureNestedString(root, []string{"channels", "telegram", "replyToMode"}, replyMode) || changed
 			changed = ensureNestedString(root, []string{"channels", "telegram", "groupPolicy"}, groupPolicy) || changed
@@ -1886,6 +2041,7 @@ func renderNeoDomeTargetsJSON(inputs map[string]string, managerUserIDs []int64) 
 func renderAccessTrustJSON(
 	ownerTelegramIDs []int64,
 	trustedTelegramIDs []int64,
+	commandAdminTelegramIDs []int64,
 	ownerVKIDs []int64,
 	trustedVKIDs []int64,
 	ownerSlackIDs []string,
@@ -1901,6 +2057,9 @@ func renderAccessTrustJSON(
 			"messenger_reply_style":     messengerReplyStyle,
 			"identity_explanation_mode": identityExplanationMode,
 			"private_access_rule":       privateAccessRule,
+		},
+		"command_access": map[string]any{
+			"telegram_admin_user_ids": commandAdminTelegramIDs,
 		},
 		"roles": map[string]any{
 			"telegram": map[string]any{
@@ -1924,6 +2083,7 @@ func renderAccessTrustJSON(
 func renderAccessTrustMarkdown(
 	ownerTelegramIDs []int64,
 	trustedTelegramIDs []int64,
+	commandAdminTelegramIDs []int64,
 	ownerVKIDs []int64,
 	trustedVKIDs []int64,
 	ownerSlackIDs []string,
@@ -1951,6 +2111,8 @@ func renderAccessTrustMarkdown(
 	builder.WriteString(fmt.Sprintf("- Messenger reply style: `%s`\n", messengerReplyStyle))
 	builder.WriteString(fmt.Sprintf("- Identity explanation mode: `%s`\n", identityExplanationMode))
 	builder.WriteString(fmt.Sprintf("- Private access rule: `%s`\n\n", privateAccessRule))
+	builder.WriteString("## Command access\n\n")
+	builder.WriteString(renderAccessTrustRoleBlock("Telegram command admins", numericListToStrings(commandAdminTelegramIDs)))
 	builder.WriteString("## Trusted contexts\n\n")
 	builder.WriteString(renderAccessTrustRoleBlock("Telegram owners", numericListToStrings(ownerTelegramIDs)))
 	builder.WriteString(renderAccessTrustRoleBlock("Telegram trusted", numericListToStrings(trustedTelegramIDs)))
