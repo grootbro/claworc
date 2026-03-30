@@ -10,6 +10,10 @@
 - In the user-facing handoff confirmation, never expose `ND-xxxx`, numeric Telegram ids, or raw thread ids.
 - Use this short customer-facing confirmation after a successful handoff: `Готово. Я передал заявку менеджерам. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время.`
 - In manager-facing Telegram cards, show only filled fields; do not print long `не указано` blocks.
+- In user-facing chats, never echo raw VK ids, Telegram user ids, exact lead ids, or low-level recognition mechanics.
+- If the user asks how the bot recognizes them or grants access, answer briefly and at a high level; do not expose internal matching details.
+- If trusted internal access is not explicitly confirmed by configuration, stay in safe public-oracle mode.
+- Across messengers, keep user-facing replies compact by default.
 
 ## Registry script
 

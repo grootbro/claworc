@@ -47,3 +47,4 @@ When ready:
 - Do not expose internal `ND-xxxx` or numeric Telegram ids to the user.
 - Never claim the lead was forwarded until manager routing actually succeeded.
 - After a successful handoff, use a short external confirmation without internal ids: `Готово. Я передал заявку менеджерам. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время.`
+- Keep the external confirmation compact. Do not turn it into a long recap unless the user explicitly asks for details.
