@@ -240,6 +240,28 @@ function formatTelegramUsername(value) {
   return normalized.startsWith("@") ? normalized : `@${normalized}`;
 }
 
+function contactRows(record, { includeSensitiveIds = false } = {}) {
+  const username = formatTelegramUsername(record.telegram_username);
+  const contact = clean(record.contact);
+  const norm = (value) => String(value || "").trim().toLowerCase();
+  const name = clean(record.name);
+  const nameLine = name && norm(name) !== norm(username) && norm(name) !== norm(contact)
+    ? `- Имя: ${name}`
+    : null;
+  const contactLine = contact && norm(contact) !== norm(username)
+    ? `- Связь: ${contact}`
+    : null;
+  const userIdLine = includeSensitiveIds && clean(record.telegram_user_id)
+    ? `- Telegram user id: ${record.telegram_user_id}`
+    : null;
+  return [
+    nameLine,
+    username ? `- Telegram: ${username}` : null,
+    contactLine,
+    userIdLine,
+  ];
+}
+
 function renderLine(label, value, formatter = (v) => String(v)) {
   if (value === "" || value === null || value === undefined) return null;
   return `- ${label}: ${formatter(value)}`;
@@ -253,7 +275,7 @@ function pushSection(lines, title, rows) {
 }
 
 function renderManagerCard(record) {
-  const title = `Новый лид NeoDome · ${record.name || "без имени"}${record.region ? ` / ${record.region}` : ""} · ${record.lead_id}`;
+  const title = `Новый лид NeoDome · ${record.lead_id}`;
   const lines = [title];
 
   pushSection(lines, "Статус", [
@@ -263,10 +285,7 @@ function renderManagerCard(record) {
   ]);
 
   pushSection(lines, "Контакт", [
-    renderLine("Имя", record.name),
-    renderLine("Связь", record.contact),
-    renderLine("Telegram", record.telegram_username, formatTelegramUsername),
-    renderLine("Telegram user id", record.telegram_user_id),
+    ...contactRows(record, { includeSensitiveIds: true }),
   ]);
 
   pushSection(lines, "Проект", [
@@ -284,9 +303,6 @@ function renderManagerCard(record) {
   ]);
 
   pushSection(lines, "Короткое резюме", record.summary ? [`- ${record.summary}`] : []);
-  pushSection(lines, "Источник", [
-    renderLine("Канал", record.channel || record.source),
-  ]);
 
   return lines.join("\n");
 }
@@ -302,10 +318,7 @@ function renderCardMarkdown(record) {
     `- Что нужно дальше: ${record.requested_next_step || "не указано"}`,
     "",
     "## Контакт",
-    `- Имя: ${record.name || "не указано"}`,
-    `- Связь: ${record.contact || "не указано"}`,
-    `- Telegram: ${formatTelegramUsername(record.telegram_username) || "не указано"}`,
-    `- Telegram user id: ${record.telegram_user_id || "не указано"}`,
+    ...contactRows(record, { includeSensitiveIds: true }),
     "",
     "## Проект",
     `- Локация: ${record.region || "не указано"}`,
@@ -322,8 +335,6 @@ function renderCardMarkdown(record) {
     "## Короткое резюме",
     record.summary ? `- ${record.summary}` : "- не указано",
     "",
-    "## Источник",
-    `- Канал: ${record.channel || record.source || "не указано"}`,
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -495,6 +506,10 @@ async function routeManager(input) {
   return lead;
 }
 
+function customerConfirmation() {
+  return "Готово. Я передал заявку менеджерам. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время.";
+}
+
 async function main() {
   ensureDirs();
   const command = process.argv[2] || "upsert";
@@ -502,13 +517,26 @@ async function main() {
 
   if (command === "upsert") {
     const lead = upsertLead(input);
-    process.stdout.write(`${JSON.stringify({ ok: true, lead_id: lead.lead_id, lead })}\n`);
+    process.stdout.write(`${JSON.stringify({
+      ok: true,
+      action: "saved",
+      registry_updated: true,
+      customer_confirmation: "Заявка сохранена во внутренней базе.",
+      internal_lead_id_hidden: true,
+    })}\n`);
     return;
   }
 
   if (command === "route-manager") {
     const lead = await routeManager(input);
-    process.stdout.write(`${JSON.stringify({ ok: true, lead_id: lead.lead_id, lead })}\n`);
+    process.stdout.write(`${JSON.stringify({
+      ok: true,
+      delivery_completed: true,
+      successful_targets: lead.manager_route_targets || [],
+      customer_confirmation: customerConfirmation(),
+      manager_status: "Заявка доставлена менеджерам.",
+      internal_lead_id_hidden: true,
+    })}\n`);
     return;
   }
 

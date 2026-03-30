@@ -36,3 +36,4 @@ Let the script:
 - Do not claim delivery until the send actually succeeded.
 - Manager-facing cards may include internal lead ids and numeric Telegram ids.
 - User-facing chats must never expose those internal identifiers.
+- In manager-facing cards, omit optional empty lines instead of printing long `не указано` blocks.
