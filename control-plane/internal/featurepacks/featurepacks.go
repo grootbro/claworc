@@ -613,6 +613,38 @@ var packRegistry = map[string]Definition{
 		},
 		buildPlan: buildNeoDomeSalesCorePlan,
 	},
+	"shirokov-capital-core": {
+		Slug:            "shirokov-capital-core",
+		Name:            "Shirokov Capital Core",
+		Summary:         "Installs a branded Shirokov Capital oracle workspace with investment-property consultation, qualification guidance, and compact messenger guardrails.",
+		Category:        "sales-oracle",
+		Version:         "1",
+		Available:       true,
+		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "oracle",
+				Name:    "Brand oracle",
+				Summary: "Sets the Shirokov Capital voice, public-vs-trusted posture, and compact identity handling for branded messenger conversations.",
+			},
+			{
+				Key:     "investment-consulting",
+				Name:    "Investment consulting",
+				Summary: "Guides clients toward the right market, object type, and investment logic based on yield, capital growth, relocation, or diversification goals.",
+			},
+			{
+				Key:     "qualification",
+				Name:    "Lead qualification",
+				Summary: "Moves conversations from broad consultation toward useful commercial next steps without leaking internal process details.",
+			},
+			{
+				Key:     "expert-toolkit",
+				Name:    "Expert toolkit",
+				Summary: "Bundles the supporting real-estate reference skill and safe API gateway guidance that this branded oracle depends on.",
+			},
+		},
+		buildPlan: buildShirokovCapitalCorePlan,
+	},
 }
 
 func Definitions() []Definition {
@@ -1083,6 +1115,8 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 		return detectMaxChannelStatus(configRoot), nil
 	case "neodome-sales-core":
 		return detectNeoDomeSalesCoreStatus(rt)
+	case "shirokov-capital-core":
+		return detectShirokovCapitalCoreStatus(rt)
 	default:
 		return nil, nil
 	}
@@ -1307,6 +1341,48 @@ func detectNeoDomeSalesCoreStatus(rt *Runtime) (*detectedStatus, error) {
 		CurrentInputs: inputs,
 		Notes: []string{
 			"Detected from live NeoDome workspace and lead routing files",
+		},
+	}, nil
+}
+
+func detectShirokovCapitalCoreStatus(rt *Runtime) (*detectedStatus, error) {
+	required := []string{
+		"BOOTSTRAP.md",
+		"IDENTITY.md",
+		"SOUL.md",
+		"AGENTS.md",
+		"MEMORY.md",
+		"TOOLS.md",
+		"USER.md",
+		"skills/shirokov-oracle-router/SKILL.md",
+		"skills/shirokov-sales-playbook/SKILL.md",
+		"skills/real-estate-skill/SKILL.md",
+	}
+
+	found := 0
+	for _, rel := range required {
+		if _, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), rel)); err == nil {
+			found++
+		}
+	}
+
+	if found < 8 {
+		return nil, nil
+	}
+
+	identityRaw, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), "IDENTITY.md"))
+	if err == nil {
+		identity := strings.ToLower(string(identityRaw))
+		if !strings.Contains(identity, "shirokov capital") && !strings.Contains(identity, "shirokov ai") {
+			return nil, nil
+		}
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: map[string]string{},
+		Notes: []string{
+			"Detected from live Shirokov Capital workspace and oracle skill files",
 		},
 	}, nil
 }
@@ -1699,6 +1775,26 @@ func buildNeoDomeSalesCorePlan(inputs map[string]string) (*Plan, error) {
 		Notes: []string{
 			"Installs a curated NeoDome workspace, skills, and a native lead registry under workspace/leads",
 			"Creates a reusable feature-pack marker so the capability can be re-applied safely",
+		},
+	}, nil
+}
+
+func buildShirokovCapitalCorePlan(inputs map[string]string) (*Plan, error) {
+	files, err := staticPackFiles("shirokov-capital-core")
+	if err != nil {
+		return nil, err
+	}
+
+	return &Plan{
+		Files: files,
+		ConfigPatch: func(root map[string]any) (bool, error) {
+			changed := false
+			changed = ensureNestedString(root, []string{"agents", "defaults", "typingMode"}, "message") || changed
+			return changed, nil
+		},
+		Notes: []string{
+			"Installs a branded Shirokov Capital oracle workspace with investment-property consultation and qualification guidance",
+			"Designed to pair with Access & Trust and Telegram Topic Context instead of hard-coding messenger access inside the pack",
 		},
 	}, nil
 }

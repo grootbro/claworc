@@ -113,6 +113,33 @@ It accepts optional routing inputs such as:
 - primary Telegram topic id
 - direct manager user ids
 
+## Branded oracle packs
+
+`shirokov-capital-core` is the same pattern applied to another brand.
+
+It installs:
+
+- branded workspace identity and tone
+- a Shirokov-specific oracle router
+- a Shirokov-specific sales playbook
+- bundled real-estate reference skills
+- compact messenger guardrails for public vs trusted conversations
+
+It intentionally does **not** own channel credentials, slash-command access, or
+voice secrets. Those should stay in reusable packs such as:
+
+- `access-trust`
+- `telegram-topic-context`
+- channel packs like `vk-channel`
+- future reusable voice / TTS packs
+
+This is the recommended authoring model for new branded bots:
+
+1. keep the brand oracle in its own core pack
+2. layer access and messenger behavior separately
+3. layer channels separately
+4. save the final composition as a blueprint
+
 ## Reusable behavior pack
 
 `telegram-topic-context` is a lighter, reusable pack for any bot that already uses Telegram.
