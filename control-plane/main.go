@@ -249,6 +249,8 @@ func main() {
 			r.Put("/instances/{id}/config", handlers.UpdateInstanceConfig)
 			r.Get("/instances/{id}/feature-packs", handlers.ListInstanceFeaturePacks)
 			r.Post("/instances/{id}/feature-packs/{slug}/apply", handlers.ApplyInstanceFeaturePack)
+			r.Post("/instances/{id}/blueprints/capture", handlers.CaptureInstanceBlueprint)
+			r.Post("/instances/{id}/blueprints/{slug}/apply", handlers.ApplyInstanceBlueprint)
 			r.Get("/instances/{id}/logs", handlers.StreamLogs)
 			r.Get("/instances/{id}/ssh-test", handlers.SSHConnectionTest)
 			r.Get("/instances/{id}/ssh-status", handlers.GetSSHStatus)
@@ -290,6 +292,7 @@ func main() {
 				r.Post("/instances/inspect-image", handlers.InspectImageContract)
 				r.Post("/instances/import-archive-image", handlers.ImportArchiveImage)
 				r.Post("/instances", handlers.CreateInstance)
+				r.Get("/blueprints", handlers.ListBlueprints)
 				r.Post("/instances/{id}/clone", handlers.CloneInstance)
 				r.Delete("/instances/{id}", handlers.DeleteInstance)
 

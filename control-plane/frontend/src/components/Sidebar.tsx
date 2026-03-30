@@ -9,6 +9,7 @@ import {
   BarChart2,
   BookOpen,
   Boxes,
+  Bot,
 } from "lucide-react";
 import { useHealth } from "@/hooks/useHealth";
 import { useAuth } from "@/contexts/AuthContext";
@@ -124,6 +125,12 @@ export default function Sidebar() {
               <BookOpen size={18} className="shrink-0" />
               <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden text-sm">
                 Skills
+              </span>
+            </Link>
+            <Link to="/blueprints" className={navLinkClass("/blueprints")}>
+              <Bot size={18} className="shrink-0" />
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden text-sm">
+                Blueprints
               </span>
             </Link>
             <Link to="/feature-packs" className={navLinkClass("/feature-packs")}>

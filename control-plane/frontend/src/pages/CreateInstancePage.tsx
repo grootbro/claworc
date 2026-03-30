@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { errorToast } from "@/utils/toast";
 import InstanceForm from "@/components/InstanceForm";
@@ -7,7 +7,9 @@ import { useCreateInstance } from "@/hooks/useInstances";
 
 export default function CreateInstancePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const createMutation = useCreateInstance();
+  const initialBlueprintSlug = searchParams.get("blueprint") || undefined;
 
   return (
     <div>
@@ -25,10 +27,11 @@ export default function CreateInstancePage() {
 
       <div className="max-w-2xl">
         <InstanceForm
+          initialBlueprintSlug={initialBlueprintSlug}
           onSubmit={(payload) =>
             createMutation.mutate(payload, {
-              onSuccess: () => {
-                navigate("/");
+              onSuccess: (instance) => {
+                navigate(`/instances/${instance.id}#features`);
               },
               onError: (error: any) => {
                 if (error.response?.status === 409) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useSettings } from "@/hooks/useSettings";
 import { useProviders } from "@/hooks/useProviders";
+import { useBlueprints } from "@/hooks/useBlueprints";
 import { importArchiveImage, inspectInstanceImage } from "@/api/instances";
 import { fetchCatalogProviderDetail } from "@/api/llm";
 import type { CatalogProviderDetail } from "@/api/llm";
@@ -13,6 +14,7 @@ interface InstanceFormProps {
   onSubmit: (payload: InstanceCreatePayload) => void;
   onCancel: () => void;
   loading?: boolean;
+  initialBlueprintSlug?: string;
 }
 
 const FALLBACK_MODEL_PRESET = [
@@ -141,10 +143,12 @@ export default function InstanceForm({
   onSubmit,
   onCancel,
   loading,
+  initialBlueprintSlug,
 }: InstanceFormProps) {
   const { isAdmin } = useAuth();
   const [imageMode, setImageMode] = useState<"managed" | "prebuilt" | "archive">("managed");
   const [displayName, setDisplayName] = useState("");
+  const [selectedBlueprintSlug, setSelectedBlueprintSlug] = useState(initialBlueprintSlug ?? "");
   const [cpuRequest, setCpuRequest] = useState("500m");
   const [cpuLimit, setCpuLimit] = useState("2000m");
   const [memoryRequest, setMemoryRequest] = useState("1Gi");
@@ -158,6 +162,7 @@ export default function InstanceForm({
   const [userAgent, setUserAgent] = useState("");
 
   const { data: settings } = useSettings();
+  const { data: blueprints = [] } = useBlueprints(isAdmin);
   const { data: allProviders = [] } = useProviders();
   const defaultManagedImage = settings?.default_container_image ?? "glukw/openclaw-vnc-chromium:latest";
   const [archiveBaseImage, setArchiveBaseImage] = useState("");
@@ -247,7 +252,14 @@ export default function InstanceForm({
     setArchiveError("");
   }, [archiveFile, archiveBaseImage, displayName, imageMode]);
 
+  useEffect(() => {
+    if (initialBlueprintSlug != null) {
+      setSelectedBlueprintSlug(initialBlueprintSlug);
+    }
+  }, [initialBlueprintSlug]);
+
   const archiveErrorGuidance = archiveError ? getArchiveErrorGuidance(archiveError) : null;
+  const selectedBlueprint = blueprints.find((item) => item.slug === selectedBlueprintSlug) ?? null;
 
   const handleInspectImage = async () => {
     const imageRef = containerImage.trim();
@@ -306,6 +318,7 @@ export default function InstanceForm({
       brave_api_key: braveKey || null,
       timezone: timezone || null,
       user_agent: userAgent || null,
+      blueprint_slug: selectedBlueprintSlug || undefined,
     };
     if (isAdmin) {
       payload.cpu_request = cpuRequest;
@@ -357,6 +370,77 @@ export default function InstanceForm({
               className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          {isAdmin && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-gray-900">Blueprint</div>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">
+                    Apply a reusable bot profile while this instance is being created. This is the clean way to spin up a new bot that matches an existing oracle or sales setup.
+                  </p>
+                </div>
+                {blueprints.length > 0 && (
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 border border-gray-200">
+                    {blueprints.length} saved
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4">
+                <label className="block text-xs text-gray-500 mb-1">
+                  Reusable profile
+                </label>
+                <select
+                  value={selectedBlueprintSlug}
+                  onChange={(event) => setSelectedBlueprintSlug(event.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Start from scratch</option>
+                  {blueprints.map((blueprint) => (
+                    <option key={blueprint.slug} value={blueprint.slug}>
+                      {blueprint.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedBlueprint ? (
+                <div className="mt-4 rounded-lg border border-blue-200 bg-white p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-medium text-gray-900">{selectedBlueprint.name}</div>
+                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700">
+                      {selectedBlueprint.pack_count} pack{selectedBlueprint.pack_count === 1 ? "" : "s"}
+                    </span>
+                    {selectedBlueprint.requires_secrets && (
+                      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                        re-enter secrets per bot
+                      </span>
+                    )}
+                  </div>
+                  {selectedBlueprint.summary && (
+                    <p className="mt-2 text-sm leading-6 text-gray-600">{selectedBlueprint.summary}</p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedBlueprint.packs.map((pack) => (
+                      <span
+                        key={pack.slug}
+                        className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-600"
+                      >
+                        {pack.name}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 text-xs leading-5 text-gray-500">
+                    Claworc will create the bot first, then apply this blueprint over SSH. Secrets stay masked and should be filled per bot after creation if needed.
+                  </div>
+                </div>
+              ) : blueprints.length === 0 ? (
+                <div className="mt-3 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-3 text-xs leading-5 text-gray-500">
+                  No blueprints saved yet. Capture one from an existing bot on the new Blueprints page, then come back here to reuse it during create.
+                </div>
+              ) : null}
+            </div>
+          )}
           {isAdmin ? (
             <>
               <div>

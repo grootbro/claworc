@@ -36,6 +36,10 @@ const (
 
 const secretConfiguredValue = "__configured__"
 
+func IsConfiguredSecretValue(value string) bool {
+	return strings.TrimSpace(value) == secretConfiguredValue
+}
+
 type InputDefinition struct {
 	Key                string    `json:"key"`
 	Label              string    `json:"label"`
@@ -55,15 +59,15 @@ type ModuleDefinition struct {
 }
 
 type Definition struct {
-	Slug             string            `json:"slug"`
-	Name             string            `json:"name"`
-	Summary          string            `json:"summary"`
-	Category         string            `json:"category"`
-	Version          string            `json:"version"`
-	Available        bool              `json:"available"`
-	AvailabilityNote string            `json:"availability_note,omitempty"`
-	RestartsGateway  bool              `json:"restarts_gateway"`
-	Inputs           []InputDefinition `json:"inputs"`
+	Slug             string             `json:"slug"`
+	Name             string             `json:"name"`
+	Summary          string             `json:"summary"`
+	Category         string             `json:"category"`
+	Version          string             `json:"version"`
+	Available        bool               `json:"available"`
+	AvailabilityNote string             `json:"availability_note,omitempty"`
+	RestartsGateway  bool               `json:"restarts_gateway"`
+	Inputs           []InputDefinition  `json:"inputs"`
 	Modules          []ModuleDefinition `json:"modules,omitempty"`
 
 	buildPlan func(inputs map[string]string) (*Plan, error)
@@ -173,13 +177,13 @@ var packRegistry = map[string]Definition{
 		},
 		Inputs: []InputDefinition{
 			{
-				Key:         "owner_telegram_user_ids",
-				Label:       "Owner Telegram user IDs",
-				Description: "Comma or newline separated Telegram numeric user ids that should be treated as owner-level contexts.",
-				Placeholder: "240961095",
-				Type:        InputTypeTextarea,
-				Required:    false,
-				Section:     "Messenger roles",
+				Key:                "owner_telegram_user_ids",
+				Label:              "Owner Telegram user IDs",
+				Description:        "Comma or newline separated Telegram numeric user ids that should be treated as owner-level contexts.",
+				Placeholder:        "240961095",
+				Type:               InputTypeTextarea,
+				Required:           false,
+				Section:            "Messenger roles",
 				SectionDescription: "Who the bot should trust by default on each messenger before it reveals internal oracle context.",
 			},
 			{
@@ -192,13 +196,13 @@ var packRegistry = map[string]Definition{
 				Section:     "Messenger roles",
 			},
 			{
-				Key:         "command_admin_telegram_user_ids",
-				Label:       "Telegram command admin IDs",
-				Description: "Telegram numeric user ids allowed to see and run slash commands. Leave blank to mirror the owner Telegram ids.",
-				Placeholder: "240961095",
-				Type:        InputTypeTextarea,
-				Required:    false,
-				Section:     "Command access",
+				Key:                "command_admin_telegram_user_ids",
+				Label:              "Telegram command admin IDs",
+				Description:        "Telegram numeric user ids allowed to see and run slash commands. Leave blank to mirror the owner Telegram ids.",
+				Placeholder:        "240961095",
+				Type:               InputTypeTextarea,
+				Required:           false,
+				Section:            "Command access",
 				SectionDescription: "Slash-command access is stricter than oracle trust. Use this to keep command menus owner-only while trusted people still use the oracle safely.",
 			},
 			{
@@ -238,14 +242,14 @@ var packRegistry = map[string]Definition{
 				Section:     "Messenger roles",
 			},
 			{
-				Key:          "public_oracle_posture",
-				Label:        "Public oracle posture",
-				Description:  "How cautious the bot should stay for untrusted public users.",
-				Placeholder:  "safe-public",
-				Type:         InputTypeText,
-				Required:     false,
-				DefaultValue: "safe-public",
-				Section:      "Oracle posture",
+				Key:                "public_oracle_posture",
+				Label:              "Public oracle posture",
+				Description:        "How cautious the bot should stay for untrusted public users.",
+				Placeholder:        "safe-public",
+				Type:               InputTypeText,
+				Required:           false,
+				DefaultValue:       "safe-public",
+				Section:            "Oracle posture",
 				SectionDescription: "Controls the tone, privacy, and access explanation style the bot uses for public users in messengers.",
 			},
 			{
@@ -385,25 +389,25 @@ var packRegistry = map[string]Definition{
 		},
 		Inputs: []InputDefinition{
 			{
-				Key:          "group_policy",
-				Label:        "Telegram group policy",
-				Description:  "Use `open` to allow contextual group replies, or `mention` to keep the bot stricter.",
-				Placeholder:  "open",
-				Type:         InputTypeText,
-				Required:     false,
-				DefaultValue: "open",
-				Section:      "Topic awareness",
+				Key:                "group_policy",
+				Label:              "Telegram group policy",
+				Description:        "Use `open` to allow contextual group replies, or `mention` to keep the bot stricter.",
+				Placeholder:        "open",
+				Type:               InputTypeText,
+				Required:           false,
+				DefaultValue:       "open",
+				Section:            "Topic awareness",
 				SectionDescription: "These settings control how calmly and contextually the bot behaves in Telegram groups and forum topics.",
 			},
 			{
-				Key:          "dm_policy",
-				Label:        "Telegram direct-message policy",
-				Description:  "Use `open` for customer-facing bots that should answer in personal chats, or `pairing` only for stricter gated operator setups.",
-				Placeholder:  "open",
-				Type:         InputTypeText,
-				Required:     false,
-				DefaultValue: "open",
-				Section:      "Direct chat posture",
+				Key:                "dm_policy",
+				Label:              "Telegram direct-message policy",
+				Description:        "Use `open` for customer-facing bots that should answer in personal chats, or `pairing` only for stricter gated operator setups.",
+				Placeholder:        "open",
+				Type:               InputTypeText,
+				Required:           false,
+				DefaultValue:       "open",
+				Section:            "Direct chat posture",
 				SectionDescription: "These settings shape how direct chats should behave for customer-facing vs operator-facing bots.",
 			},
 			{
@@ -451,13 +455,13 @@ var packRegistry = map[string]Definition{
 		},
 		Inputs: []InputDefinition{
 			{
-				Key:         "access_token",
-				Label:       "VK community token",
-				Description: "Community access token used for VK API calls. Leave blank on reapply to preserve the current token.",
-				Placeholder: "vk1.xxxxx",
-				Type:        InputTypeSecret,
-				Required:    true,
-				Section:     "Callback transport",
+				Key:                "access_token",
+				Label:              "VK community token",
+				Description:        "Community access token used for VK API calls. Leave blank on reapply to preserve the current token.",
+				Placeholder:        "vk1.xxxxx",
+				Type:               InputTypeSecret,
+				Required:           true,
+				Section:            "Callback transport",
 				SectionDescription: "These values wire the VK Community Messages transport itself. Secrets stay hidden on reapply.",
 			},
 			{
@@ -506,14 +510,14 @@ var packRegistry = map[string]Definition{
 				Section:     "Callback transport",
 			},
 			{
-				Key:          "dm_policy",
-				Label:        "DM policy",
-				Description:  "Default direct-message policy for VK user chats.",
-				Placeholder:  "pairing",
-				Type:         InputTypeText,
-				Required:     false,
-				DefaultValue: "pairing",
-				Section:      "Conversation policy",
+				Key:                "dm_policy",
+				Label:              "DM policy",
+				Description:        "Default direct-message policy for VK user chats.",
+				Placeholder:        "pairing",
+				Type:               InputTypeText,
+				Required:           false,
+				DefaultValue:       "pairing",
+				Section:            "Conversation policy",
 				SectionDescription: "These settings tune whether VK should behave as a safe DM channel only, or broaden toward richer live conversation handling.",
 			},
 			{
@@ -570,13 +574,13 @@ var packRegistry = map[string]Definition{
 		},
 		Inputs: []InputDefinition{
 			{
-				Key:         "primary_sales_chat_id",
-				Label:       "Primary sales chat ID",
-				Description: "Telegram chat_id for the main manager group or sales chat.",
-				Placeholder: "-1001234567890",
-				Type:        InputTypeText,
-				Required:    false,
-				Section:     "Manager routing",
+				Key:                "primary_sales_chat_id",
+				Label:              "Primary sales chat ID",
+				Description:        "Telegram chat_id for the main manager group or sales chat.",
+				Placeholder:        "-1001234567890",
+				Type:               InputTypeText,
+				Required:           false,
+				Section:            "Manager routing",
 				SectionDescription: "These settings decide where qualified NeoDome leads should go after the bot has collected enough context.",
 			},
 			{
@@ -970,6 +974,9 @@ func normalizeInputs(def Definition, raw map[string]string, previous map[string]
 	out := make(map[string]string, len(def.Inputs))
 	for _, input := range def.Inputs {
 		value := strings.TrimSpace(raw[input.Key])
+		if input.Type == InputTypeSecret && IsConfiguredSecretValue(value) {
+			value = ""
+		}
 		if value == "" {
 			value = strings.TrimSpace(previous[input.Key])
 		}

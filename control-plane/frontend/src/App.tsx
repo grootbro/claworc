@@ -12,6 +12,7 @@ import VncPopupPage from "./pages/VncPopupPage";
 import ChatPopupPage from "./pages/ChatPopupPage";
 import SkillsPage from "./pages/SkillsPage";
 import FeaturePacksPage from "./pages/FeaturePacksPage";
+import BlueprintsPage from "./pages/BlueprintsPage";
 import { useAuth } from "./contexts/AuthContext";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -87,6 +88,14 @@ export default function App() {
           element={
             <AdminRoute>
               <UsagePage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/blueprints"
+          element={
+            <AdminRoute>
+              <BlueprintsPage />
             </AdminRoute>
           }
         />

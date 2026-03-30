@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Bot,
   Boxes,
@@ -141,7 +142,7 @@ function moduleAccentClasses(index: number): { border: string; bg: string; icon:
     { border: "border-amber-200", bg: "bg-amber-50/70", icon: "text-amber-700" },
     { border: "border-violet-200", bg: "bg-violet-50/70", icon: "text-violet-700" },
   ] as const;
-  return palette[index % palette.length];
+  return palette[index % palette.length] ?? palette[0];
 }
 
 function filterMatches(pack: InstanceFeaturePack, query: string): boolean {
@@ -339,9 +340,9 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700">
               <Sparkles size={13} />
               Feature Packs
@@ -351,6 +352,18 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
               Packs bundle workspace guidance, scripts, config patches, and runtime plugins into one safe install flow.
               Active packs stay visible here, with a compact preview of what is already configured on this bot even if it was set up before the pack engine existed.
             </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to={`/blueprints?instance=${instanceId}`}
+              className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              Open reusable blueprints
+            </Link>
+            <div className="text-xs leading-5 text-gray-500">
+              Use blueprints when you want to reuse this bot as a template or apply the same setup to another bot during create or later.
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-4">

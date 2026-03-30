@@ -58,6 +58,7 @@ export interface InstanceCreatePayload {
   timezone?: string | null;
   user_agent?: string | null;
   enabled_providers?: number[];
+  blueprint_slug?: string;
 }
 
 export interface InstanceUpdatePayload {

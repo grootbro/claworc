@@ -18,8 +18,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gluk-w/claworc/control-plane/internal/blueprints"
 	"github.com/gluk-w/claworc/control-plane/internal/config"
 	"github.com/gluk-w/claworc/control-plane/internal/database"
+	"github.com/gluk-w/claworc/control-plane/internal/featurepacks"
 	"github.com/gluk-w/claworc/control-plane/internal/llmgateway"
 	"github.com/gluk-w/claworc/control-plane/internal/middleware"
 	"github.com/gluk-w/claworc/control-plane/internal/orchestrator"
@@ -68,6 +70,7 @@ type instanceCreateRequest struct {
 	Timezone         *string           `json:"timezone"`
 	UserAgent        *string           `json:"user_agent"`
 	EnabledProviders []uint            `json:"enabled_providers"`
+	BlueprintSlug    string            `json:"blueprint_slug"`
 }
 
 type modelsResponse struct {
@@ -1113,6 +1116,20 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var requestedBlueprintName string
+	if strings.TrimSpace(body.BlueprintSlug) != "" {
+		item, err := blueprints.Get(strings.TrimSpace(body.BlueprintSlug))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to inspect blueprint")
+			return
+		}
+		if item == nil {
+			writeError(w, http.StatusBadRequest, "Selected blueprint was not found")
+			return
+		}
+		requestedBlueprintName = item.Name
+	}
+
 	if user.Role != "admin" {
 		if !canSelfProvision(user) {
 			writeError(w, http.StatusForbidden, "Self-service instance creation is disabled for this account")
@@ -1313,12 +1330,6 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 			database.DB.Model(&inst).Update("status", "error")
 			return
 		}
-		clearStatusMessage(inst.ID)
-		database.DB.Model(&inst).Updates(map[string]interface{}{
-			"status":     "running",
-			"updated_at": time.Now().UTC(),
-		})
-
 		contract := resolveImageContract(ctx, orch, effectiveImage)
 		persistImageContract(inst.ID, contract)
 
@@ -1332,9 +1343,38 @@ func CreateInstance(w http.ResponseWriter, r *http.Request) {
 		sshClient, err := SSHMgr.WaitForSSH(ctx, inst.ID, 120*time.Second)
 		if err != nil {
 			log.Printf("Failed to get SSH connection for instance %d during configure: %v", inst.ID, err)
+			setStatusMessage(inst.ID, "Failed: instance SSH did not become ready")
+			database.DB.Model(&inst).Updates(map[string]interface{}{
+				"status":     "error",
+				"updated_at": time.Now().UTC(),
+			})
 			return
 		}
+		setStatusMessage(inst.ID, "Configuring OpenClaw runtime...")
 		ConfigureInstance(ctx, orch, sshproxy.NewSSHInstance(sshClient, getEffectiveOpenClawUser(inst)), name, models, gatewayProviders, config.Cfg.LLMGatewayPort)
+
+		if strings.TrimSpace(body.BlueprintSlug) != "" {
+			label := requestedBlueprintName
+			if label == "" {
+				label = body.BlueprintSlug
+			}
+			setStatusMessage(inst.ID, fmt.Sprintf("Applying blueprint %s...", label))
+			if _, err := blueprints.Apply(ctx, featurepacks.NewRuntime(sshClient, inst), strings.TrimSpace(body.BlueprintSlug)); err != nil {
+				log.Printf("Failed to apply blueprint %s to instance %d during create: %v", body.BlueprintSlug, inst.ID, err)
+				setStatusMessage(inst.ID, fmt.Sprintf("Failed: blueprint apply did not finish (%v)", err))
+				database.DB.Model(&inst).Updates(map[string]interface{}{
+					"status":     "error",
+					"updated_at": time.Now().UTC(),
+				})
+				return
+			}
+		}
+
+		clearStatusMessage(inst.ID)
+		database.DB.Model(&inst).Updates(map[string]interface{}{
+			"status":     "running",
+			"updated_at": time.Now().UTC(),
+		})
 	}()
 
 	resp := instanceToResponse(inst, "creating")

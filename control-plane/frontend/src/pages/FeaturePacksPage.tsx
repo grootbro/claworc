@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Bot, CheckCircle2, CircleDashed, Search, Sparkles } from "lucide-react";
+import { Bot, CheckCircle2, Search, Sparkles } from "lucide-react";
 import FeaturePackPanel from "@/components/FeaturePackPanel";
 import { useInstances } from "@/hooks/useInstances";
 
