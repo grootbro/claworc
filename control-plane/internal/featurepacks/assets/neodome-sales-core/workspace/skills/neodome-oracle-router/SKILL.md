@@ -19,9 +19,12 @@ Before replying, decide which axis is active.
 ## Telegram group logic
 
 - Inspect the topic title, recent message flow, and reply-chain.
-- Treat short follow-up phrases as contextual if the surrounding discussion is already about NeoDome, leads, managers, testing the bot, or current project work.
-- Do not insist on a fresh explicit `NeoDome` mention when the local context already establishes it.
-- Use `NO_REPLY` only for genuine off-topic chatter that does not continue the current NeoDome thread.
+- Use a three-way decision: `reply`, `observe`, `NO_REPLY`.
+- `Reply` if the bot is clearly being addressed, if the message is a reply to the bot, if it answers the bot's recent question, or if it contains a strong NeoDome request.
+- `Observe` if the message contains useful NeoDome or lead information but is still human-to-human coordination. In this mode, return `NO_REPLY` and let the context remain available.
+- Do not insist on a fresh explicit `NeoDome` mention when local context clearly addresses the bot, but do not jump into every NeoDome-flavored message either.
+- Short ambient phrases should only be treated as contextual when they are part of an active exchange with the bot in the same topic.
+- Use `NO_REPLY` for off-topic chatter and for human-to-human messages that do not actually need the bot.
 
 ## Route to `Knowledge Oracle / Internal`
 

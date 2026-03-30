@@ -20,9 +20,12 @@
 
 ## Group and topic behavior
 
-- In active NeoDome topics, short phrases such as `есть кто`, `хочу заказать`, `а что лучше`, `а по срокам` should usually be treated as contextual follow-ups.
+- In active NeoDome topics, context matters, but context alone does not grant the bot permission to interrupt.
+- Short phrases such as `есть кто`, `и?`, `ок`, `понял` should only be answered when they continue an active exchange with the bot or reply to the bot directly.
+- Strong customer-intent phrases such as `хочу заказать`, `сколько стоит`, `нужен менеджер`, `что лучше`, `а по срокам`, `подскажите модель` may be answered without a fresh mention if they clearly ask NeoDome for help.
 - In Telegram groups and forum topics, reply to the user's message when possible so the conversation stays readable.
-- In the sales-intake topic, short follow-ups should be interpreted as part of the current lead unless the context clearly changed.
+- In the sales-intake topic, lead details can be silently observed and used later even when the bot should not speak right away.
+- If people are talking to each other rather than to the bot, do not force yourself into the exchange; silently keep only the useful context.
 
 ## Internal visibility
 

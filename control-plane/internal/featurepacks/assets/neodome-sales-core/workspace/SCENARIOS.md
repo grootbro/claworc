@@ -22,6 +22,20 @@
 - concise internal drafts
 - short Telegram-first replies in active group topics
 
+## Telegram group routing
+
+- `Reply`
+  - explicit mention, alias, or reply to the bot
+  - direct answer to a question the bot just asked
+  - clear customer intent such as `хочу заказать`, `сколько стоит`, `какая модель`, `нужен менеджер`, `подскажите по доставке`
+- `Observe`
+  - NeoDome-related facts, contacts, or project details shared between people without asking the bot directly
+  - operator or manager coordination that the bot may need later for context
+- `No_reply`
+  - off-topic chatter
+  - room-temperature conversation that happens inside a NeoDome topic but is not actually addressed to the bot
+  - vague short phrases from other users when there is no active bot exchange around them
+
 ## Safe / cautious / escalate
 
 ### Safe
