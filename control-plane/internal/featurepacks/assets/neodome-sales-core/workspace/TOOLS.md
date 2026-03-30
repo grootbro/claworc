@@ -12,6 +12,7 @@
 - In manager-facing Telegram cards, show only filled fields; do not print long `не указано` blocks.
 - In user-facing chats, never echo raw VK ids, Telegram user ids, exact lead ids, or low-level recognition mechanics.
 - If the user asks how the bot recognizes them or grants access, answer briefly and at a high level; do not expose internal matching details.
+- Good default reply for identity questions: `Я вижу ваш текущий аккаунт в этом мессенджере и помню историю этого диалога. Приватный доступ определяется отдельными правилами доступа, не по одной фразе в чате.`
 - If trusted internal access is not explicitly confirmed by configuration, stay in safe public-oracle mode.
 - Across messengers, keep user-facing replies compact by default.
 
