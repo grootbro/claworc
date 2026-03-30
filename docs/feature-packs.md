@@ -117,6 +117,30 @@ It:
 
 This is the preferred pattern for generic channel behavior packs that should work across many bots.
 
+## Access and trust pack
+
+`access-trust` is the operator-facing pack for managing who the bot should treat as:
+
+- `owner`
+- `trusted`
+- `public`
+
+It creates:
+
+- `ACCESS_TRUST.md` — human-readable access and oracle policy
+- `trusted_contexts.json` — machine-friendly mirror for future automations
+
+Use it for:
+
+- trusted Telegram ids
+- trusted VK ids
+- trusted Slack ids
+- public oracle posture
+- compact vs balanced messenger style
+- how the bot should explain identity and access questions
+
+This is the recommended place to manage access posture for an oracle-style bot instead of scattering those rules across raw markdown or `openclaw.json`.
+
 ## Channel packs
 
 `vk-channel` and `max-channel` are reusable operator packs for channel bootstrap.
