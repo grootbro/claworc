@@ -62,6 +62,9 @@ Each blueprint now shows:
 - its ordered pack chain
 - signal chips such as `Brand core`, `Trust`, `Channels`, and `Voice`
 - a clearer split between `apply now` and `use during create`
+- direct `export` as a JSON bundle
+- direct `import` from a previously exported JSON bundle
+- `refresh from source bot` when you are looking at the original bot the blueprint came from
 
 This makes blueprints better for branded bot families where the operator wants to think in terms of reusable systems, not individual packs.
 

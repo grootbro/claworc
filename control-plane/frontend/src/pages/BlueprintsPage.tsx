@@ -1,20 +1,25 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   Bot,
   Boxes,
   CheckCircle2,
+  Download,
   Radio,
+  RefreshCw,
   Search,
   Shield,
   Sparkles,
+  Upload,
   Volume2,
   Wand2,
 } from "lucide-react";
-import { useBlueprints, useApplyInstanceBlueprint, useCaptureInstanceBlueprint } from "@/hooks/useBlueprints";
+import { exportBlueprint } from "@/api/blueprints";
+import { useBlueprints, useApplyInstanceBlueprint, useCaptureInstanceBlueprint, useImportBlueprint } from "@/hooks/useBlueprints";
 import { useInstanceFeaturePacks, useInstances } from "@/hooks/useInstances";
 import type { Blueprint } from "@/types/blueprint";
+import { errorToast } from "@/utils/toast";
 
 type BlueprintView = "all" | "ready" | "aligned" | "secrets";
 type FitKind = "select" | "source" | "aligned" | "partial" | "fresh";
@@ -188,12 +193,14 @@ export default function BlueprintsPage() {
   const { data: instances = [] } = useInstances();
   const captureMutation = useCaptureInstanceBlueprint();
   const applyMutation = useApplyInstanceBlueprint();
+  const importMutation = useImportBlueprint();
   const [searchParams, setSearchParams] = useSearchParams();
   const [instanceSearch, setInstanceSearch] = useState("");
   const [blueprintSearch, setBlueprintSearch] = useState("");
   const [view, setView] = useState<BlueprintView>("all");
   const [captureName, setCaptureName] = useState("");
   const [captureSummary, setCaptureSummary] = useState("");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const deferredInstanceSearch = useDeferredValue(instanceSearch);
   const deferredBlueprintSearch = useDeferredValue(blueprintSearch);
@@ -305,6 +312,29 @@ export default function BlueprintsPage() {
   const runningCount = instances.filter((instance) => instance.status === "running").length;
   const secretsBlueprintCount = blueprints.filter((blueprint) => blueprint.requires_secrets).length;
   const readyNowCount = blueprintEntries.filter(({ fit }) => fit.kind === "partial" || fit.kind === "fresh").length;
+
+  const handleExport = async (slug: string) => {
+    try {
+      const { blob, filename } = await exportBlueprint(slug);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      errorToast("Failed to export blueprint", error);
+    }
+  };
+
+  const handleImport = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+    await importMutation.mutateAsync(file);
+  };
 
   return (
     <div className="space-y-6">
@@ -589,6 +619,26 @@ export default function BlueprintsPage() {
                     {option.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => importInputRef.current?.click()}
+                  disabled={importMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Upload size={13} />
+                  {importMutation.isPending ? "Importing..." : "Import blueprint"}
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    void handleImport(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
               </div>
             </div>
 
@@ -718,6 +768,26 @@ export default function BlueprintsPage() {
                                     ? `Apply to ${selectedInstance.display_name}`
                                     : "Choose target bot"}
                             </button>
+                            {selectedInstance && blueprint.source_instance_id === selectedInstance.id && (
+                              <button
+                                type="button"
+                                disabled={captureMutation.isPending}
+                                onClick={() =>
+                                  captureMutation.mutate({
+                                    id: selectedInstance.id,
+                                    payload: {
+                                      name: blueprint.name,
+                                      summary: blueprint.summary || "",
+                                      slug: blueprint.slug,
+                                    },
+                                  })
+                                }
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <RefreshCw size={15} />
+                                {captureMutation.isPending ? "Refreshing..." : "Refresh from this bot"}
+                              </button>
+                            )}
                             <Link
                               to={`/instances/new?blueprint=${encodeURIComponent(blueprint.slug)}`}
                               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
@@ -725,6 +795,14 @@ export default function BlueprintsPage() {
                               Use during create
                               <ArrowRight size={15} />
                             </Link>
+                            <button
+                              type="button"
+                              onClick={() => void handleExport(blueprint.slug)}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                            >
+                              <Download size={15} />
+                              Export JSON bundle
+                            </button>
                           </div>
                         </div>
                       </article>

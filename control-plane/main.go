@@ -293,6 +293,8 @@ func main() {
 				r.Post("/instances/import-archive-image", handlers.ImportArchiveImage)
 				r.Post("/instances", handlers.CreateInstance)
 				r.Get("/blueprints", handlers.ListBlueprints)
+				r.Get("/blueprints/{slug}/export", handlers.ExportBlueprint)
+				r.Post("/blueprints/import", handlers.ImportBlueprint)
 				r.Post("/instances/{id}/clone", handlers.CloneInstance)
 				r.Delete("/instances/{id}", handlers.DeleteInstance)
 
