@@ -46,14 +46,6 @@ export function createVkWebhookHandler(params: {
         return;
       }
 
-      const expectedSecret =
-        params.account.config.callbackSecret?.trim() || params.account.config.webhookSecret?.trim();
-      if (expectedSecret && String(body.secret ?? "").trim() !== expectedSecret) {
-        res.statusCode = 401;
-        res.end("secret mismatch");
-        return;
-      }
-
       if (body.type === "confirmation") {
         const token = params.account.config.confirmationToken?.trim();
         if (!token) {
@@ -64,6 +56,14 @@ export function createVkWebhookHandler(params: {
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
         res.end(token);
+        return;
+      }
+
+      const expectedSecret =
+        params.account.config.callbackSecret?.trim() || params.account.config.webhookSecret?.trim();
+      if (expectedSecret && String(body.secret ?? "").trim() !== expectedSecret) {
+        res.statusCode = 401;
+        res.end("secret mismatch");
         return;
       }
 
