@@ -367,6 +367,186 @@ var packRegistry = map[string]Definition{
 		},
 		buildPlan: buildMaxChannelPlan,
 	},
+	"elevenlabs-voice": {
+		Slug:            "elevenlabs-voice",
+		Name:            "ElevenLabs Voice",
+		Summary:         "Configures reusable ElevenLabs TTS defaults for brand bots without baking voice secrets into brand-specific oracle packs.",
+		Category:        "voice-tts",
+		Version:         "1",
+		Available:       true,
+		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "provider",
+				Name:    "Provider defaults",
+				Summary: "Enables ElevenLabs as the active TTS provider with safe messenger defaults and secret-aware API key handling.",
+			},
+			{
+				Key:     "voice-profile",
+				Name:    "Voice profile",
+				Summary: "Defines the reusable voice id, model, language, and text normalization settings for this bot.",
+			},
+			{
+				Key:     "delivery",
+				Name:    "Delivery guardrails",
+				Summary: "Sets summary model, text length, timeout, and voice tuning so TTS stays stable in production chats.",
+			},
+		},
+		Inputs: []InputDefinition{
+			{
+				Key:                "api_key",
+				Label:              "ElevenLabs API key",
+				Description:        "Production ElevenLabs API key. Leave blank on reapply to keep the current configured key.",
+				Placeholder:        "ELEVENLABS_API_KEY",
+				Type:               InputTypeSecret,
+				Required:           true,
+				Section:            "Provider defaults",
+				SectionDescription: "The reusable TTS layer should keep secrets here instead of burying them inside a brand-specific workspace pack.",
+			},
+			{
+				Key:          "voice_id",
+				Label:        "Voice ID",
+				Description:  "Primary ElevenLabs voice id used for final TTS output.",
+				Placeholder:  "cjVigY5qzO86Huf0OWal",
+				Type:         InputTypeText,
+				Required:     true,
+				DefaultValue: "cjVigY5qzO86Huf0OWal",
+				Section:      "Voice profile",
+			},
+			{
+				Key:          "model_id",
+				Label:        "Model ID",
+				Description:  "ElevenLabs synthesis model. The flash model is a strong production default for messenger bots.",
+				Placeholder:  "eleven_flash_v2_5",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "eleven_flash_v2_5",
+				Section:      "Voice profile",
+			},
+			{
+				Key:          "language_code",
+				Label:        "Language code",
+				Description:  "Preferred synthesis language for normalization and voice shaping.",
+				Placeholder:  "ru",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "ru",
+				Section:      "Voice profile",
+			},
+			{
+				Key:          "apply_text_normalization",
+				Label:        "Text normalization",
+				Description:  "How ElevenLabs should normalize text before speech synthesis.",
+				Placeholder:  "auto",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "auto",
+				Section:      "Voice profile",
+			},
+			{
+				Key:                "summary_model",
+				Label:              "TTS summary model",
+				Description:        "Optional summary model used before synthesis when long answers need spoken condensation.",
+				Placeholder:        "anthropic/claude-haiku-4-5",
+				Type:               InputTypeText,
+				Required:           false,
+				DefaultValue:       "anthropic/claude-haiku-4-5",
+				Section:            "Delivery guardrails",
+				SectionDescription: "These settings keep voice replies responsive in messengers and avoid slow, overly long audio output.",
+			},
+			{
+				Key:          "auto_mode",
+				Label:        "Auto mode",
+				Description:  "Controls how TTS is triggered in message flows.",
+				Placeholder:  "tagged",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "tagged",
+				Section:      "Delivery guardrails",
+			},
+			{
+				Key:          "speech_mode",
+				Label:        "Speech mode",
+				Description:  "Controls which reply stage becomes speech output.",
+				Placeholder:  "final",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "final",
+				Section:      "Delivery guardrails",
+			},
+			{
+				Key:          "max_text_length",
+				Label:        "Max text length",
+				Description:  "Maximum text length passed into the voice layer before truncation or summarization.",
+				Placeholder:  "220",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "220",
+				Section:      "Delivery guardrails",
+			},
+			{
+				Key:          "timeout_ms",
+				Label:        "Timeout (ms)",
+				Description:  "Network timeout for ElevenLabs synthesis requests.",
+				Placeholder:  "20000",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "20000",
+				Section:      "Delivery guardrails",
+			},
+			{
+				Key:          "stability",
+				Label:        "Stability",
+				Description:  "Voice stability value for ElevenLabs voice settings.",
+				Placeholder:  "0.45",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "0.45",
+				Section:      "Delivery guardrails",
+			},
+			{
+				Key:          "similarity_boost",
+				Label:        "Similarity boost",
+				Description:  "Similarity boost value for ElevenLabs voice settings.",
+				Placeholder:  "0.8",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "0.8",
+				Section:      "Delivery guardrails",
+			},
+			{
+				Key:          "style",
+				Label:        "Style",
+				Description:  "Optional ElevenLabs style value.",
+				Placeholder:  "0",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "0",
+				Section:      "Delivery guardrails",
+			},
+			{
+				Key:          "use_speaker_boost",
+				Label:        "Use speaker boost",
+				Description:  "Whether ElevenLabs speaker boost should stay enabled.",
+				Placeholder:  "true",
+				Type:         InputTypeBoolean,
+				Required:     false,
+				DefaultValue: "true",
+				Section:      "Delivery guardrails",
+			},
+			{
+				Key:          "speed",
+				Label:        "Speed",
+				Description:  "Playback speed multiplier for synthesized voice output.",
+				Placeholder:  "1",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "1",
+				Section:      "Delivery guardrails",
+			},
+		},
+		buildPlan: buildElevenLabsVoicePlan,
+	},
 	"telegram-topic-context": {
 		Slug:            "telegram-topic-context",
 		Name:            "Telegram Topic Context",
@@ -1113,6 +1293,8 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 		return detectVKChannelStatus(configRoot), nil
 	case "max-channel":
 		return detectMaxChannelStatus(configRoot), nil
+	case "elevenlabs-voice":
+		return detectElevenLabsVoiceStatus(configRoot), nil
 	case "neodome-sales-core":
 		return detectNeoDomeSalesCoreStatus(rt)
 	case "shirokov-capital-core":
@@ -1282,6 +1464,43 @@ func detectMaxChannelStatus(configRoot map[string]any) *detectedStatus {
 		CurrentInputs: inputs,
 		Notes: []string{
 			"Detected from live MAX channel config",
+		},
+	}
+}
+
+func detectElevenLabsVoiceStatus(configRoot map[string]any) *detectedStatus {
+	if nestedString(configRoot, "messages", "tts", "provider") != "elevenlabs" {
+		return nil
+	}
+	inputs := map[string]string{
+		"voice_id":                 nestedString(configRoot, "messages", "tts", "providers", "elevenlabs", "voiceId"),
+		"model_id":                 nestedString(configRoot, "messages", "tts", "providers", "elevenlabs", "modelId"),
+		"language_code":            nestedString(configRoot, "messages", "tts", "providers", "elevenlabs", "languageCode"),
+		"apply_text_normalization": nestedString(configRoot, "messages", "tts", "providers", "elevenlabs", "applyTextNormalization"),
+		"summary_model":            nestedString(configRoot, "messages", "tts", "summaryModel"),
+		"auto_mode":                nestedString(configRoot, "messages", "tts", "auto"),
+		"speech_mode":              nestedString(configRoot, "messages", "tts", "mode"),
+		"max_text_length":          strconv.Itoa(nestedInt(configRoot, "messages", "tts", "maxTextLength")),
+		"timeout_ms":               strconv.Itoa(nestedInt(configRoot, "messages", "tts", "timeoutMs")),
+		"stability":                nestedFloatString(configRoot, "messages", "tts", "providers", "elevenlabs", "voiceSettings", "stability"),
+		"similarity_boost":         nestedFloatString(configRoot, "messages", "tts", "providers", "elevenlabs", "voiceSettings", "similarityBoost"),
+		"style":                    nestedFloatString(configRoot, "messages", "tts", "providers", "elevenlabs", "voiceSettings", "style"),
+		"use_speaker_boost":        strconv.FormatBool(nestedBool(configRoot, "messages", "tts", "providers", "elevenlabs", "voiceSettings", "useSpeakerBoost")),
+		"speed":                    nestedFloatString(configRoot, "messages", "tts", "providers", "elevenlabs", "voiceSettings", "speed"),
+	}
+	if nestedString(configRoot, "messages", "tts", "providers", "elevenlabs", "apiKey") != "" {
+		inputs["api_key"] = secretConfiguredValue
+	}
+
+	if inputs["voice_id"] == "" && inputs["api_key"] == "" {
+		return nil
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: inputs,
+		Notes: []string{
+			"Detected from live ElevenLabs TTS config",
 		},
 	}
 }
@@ -1602,6 +1821,41 @@ func parsePositiveInt(value, label string) (int, error) {
 	return n, nil
 }
 
+func parseFloat(value, label string) (float64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, validationError{message: fmt.Sprintf("%s must be a valid number", label)}
+	}
+	return n, nil
+}
+
+func nestedFloatString(root map[string]any, keys ...string) string {
+	value, ok := nestedValue(root, keys...)
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(typed), 'f', -1, 64)
+	case int:
+		return strconv.Itoa(typed)
+	case int64:
+		return strconv.FormatInt(typed, 10)
+	case json.Number:
+		return typed.String()
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		return ""
+	}
+}
+
 func validateURL(value, label string) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -1795,6 +2049,70 @@ func buildShirokovCapitalCorePlan(inputs map[string]string) (*Plan, error) {
 		Notes: []string{
 			"Installs a branded Shirokov Capital oracle workspace with investment-property consultation and qualification guidance",
 			"Designed to pair with Access & Trust and Telegram Topic Context instead of hard-coding messenger access inside the pack",
+		},
+	}, nil
+}
+
+func buildElevenLabsVoicePlan(inputs map[string]string) (*Plan, error) {
+	if err := validateSecretConfigured(inputs["api_key"], "api_key"); err != nil {
+		return nil, err
+	}
+	voiceID := strings.TrimSpace(inputs["voice_id"])
+	if voiceID == "" {
+		return nil, validationError{message: "voice_id is required"}
+	}
+	maxTextLength, err := parsePositiveInt(inputs["max_text_length"], "max_text_length")
+	if err != nil {
+		return nil, err
+	}
+	timeoutMs, err := parsePositiveInt(inputs["timeout_ms"], "timeout_ms")
+	if err != nil {
+		return nil, err
+	}
+	stability, err := parseFloat(inputs["stability"], "stability")
+	if err != nil {
+		return nil, err
+	}
+	similarityBoost, err := parseFloat(inputs["similarity_boost"], "similarity_boost")
+	if err != nil {
+		return nil, err
+	}
+	style, err := parseFloat(inputs["style"], "style")
+	if err != nil {
+		return nil, err
+	}
+	speed, err := parseFloat(inputs["speed"], "speed")
+	if err != nil {
+		return nil, err
+	}
+
+	return &Plan{
+		ConfigPatch: func(root map[string]any) (bool, error) {
+			changed := false
+			changed = setNestedValue(root, []string{"messages", "tts", "provider"}, "elevenlabs") || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "auto"}, strings.TrimSpace(inputs["auto_mode"])) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "mode"}, strings.TrimSpace(inputs["speech_mode"])) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "summaryModel"}, strings.TrimSpace(inputs["summary_model"])) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "maxTextLength"}, maxTextLength) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "timeoutMs"}, timeoutMs) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "voiceId"}, voiceID) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "modelId"}, strings.TrimSpace(inputs["model_id"])) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "languageCode"}, strings.TrimSpace(inputs["language_code"])) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "applyTextNormalization"}, strings.TrimSpace(inputs["apply_text_normalization"])) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "voiceSettings", "stability"}, stability) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "voiceSettings", "similarityBoost"}, similarityBoost) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "voiceSettings", "style"}, style) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "voiceSettings", "useSpeakerBoost"}, boolFromInput(inputs["use_speaker_boost"])) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "voiceSettings", "speed"}, speed) || changed
+			changed = setNestedValue(root, []string{"messages", "tts", "providers", "microsoft", "enabled"}, false) || changed
+			if shouldApplySecret(inputs["api_key"]) {
+				changed = setNestedValue(root, []string{"messages", "tts", "providers", "elevenlabs", "apiKey"}, strings.TrimSpace(inputs["api_key"])) || changed
+			}
+			return changed, nil
+		},
+		Notes: []string{
+			"Configures a reusable ElevenLabs voice layer without baking API secrets into a brand-specific core pack",
+			"Use this with branded oracle packs such as NeoDome Sales Core or Shirokov Capital Core so voice stays portable across bots",
 		},
 	}, nil
 }

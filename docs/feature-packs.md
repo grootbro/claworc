@@ -192,3 +192,25 @@ They:
 These packs are intentionally transport-aware but secret-light: they configure
 the account, stage the plugin runtime, and apply safe workflow defaults without
 requiring a dedicated image rebuild for every channel feature.
+
+## Voice packs
+
+`elevenlabs-voice` is the reusable TTS layer for brand bots that should speak
+with the same operator-controlled voice profile.
+
+It owns:
+
+- ElevenLabs API key storage inside `openclaw.json`
+- reusable voice id and model defaults
+- language and text-normalization defaults
+- delivery guardrails such as summary model, timeout, and max text length
+- voice tuning values like stability and similarity boost
+
+It intentionally does **not** define brand identity, sales logic, or access
+posture. Pair it with a branded core pack such as:
+
+- `neodome-sales-core`
+- `shirokov-capital-core`
+
+This keeps voice reusable across bots while the branded oracle remains specific
+to each product or company.
