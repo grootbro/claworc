@@ -6,6 +6,13 @@ type RecordInboundSessionFn = (params: {
   storePath: string;
   sessionKey: string;
   ctx: Record<string, unknown>;
+  updateLastRoute?: {
+    sessionKey: string;
+    channel: string;
+    to: string;
+    accountId?: string;
+    threadId?: string | number;
+  };
   onRecordError: (err: unknown) => void;
 }) => Promise<void>;
 type DispatchReplyWithBufferedBlockDispatcherFn = (params: {
@@ -22,6 +29,7 @@ export async function dispatchVkInboundReply(params: {
   route: {
     agentId: string;
     sessionKey: string;
+    accountId?: string;
   };
   storePath: string;
   ctxPayload: Record<string, unknown>;
@@ -36,8 +44,16 @@ export async function dispatchVkInboundReply(params: {
     };
   };
   deliver: (payload: OutboundReplyPayload) => Promise<void>;
+  updateLastRoute?: {
+    sessionKey: string;
+    channel: string;
+    to: string;
+    accountId?: string;
+    threadId?: string | number;
+  };
   onRecordError: (err: unknown) => void;
   onDispatchError: (err: unknown, info: { kind: string }) => void;
+  onDispatchComplete?: (result: unknown) => void;
 }): Promise<void> {
   await params.core.channel.session.recordInboundSession({
     storePath: params.storePath,
@@ -45,6 +61,7 @@ export async function dispatchVkInboundReply(params: {
       (typeof params.ctxPayload.SessionKey === "string" && params.ctxPayload.SessionKey) ||
       params.route.sessionKey,
     ctx: params.ctxPayload,
+    updateLastRoute: params.updateLastRoute,
     onRecordError: params.onRecordError,
   });
 
@@ -56,7 +73,7 @@ export async function dispatchVkInboundReply(params: {
   });
   const deliver = createNormalizedOutboundDeliverer(params.deliver);
 
-  await params.core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+  const result = await params.core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: params.ctxPayload,
     cfg: params.cfg,
     dispatcherOptions: {
@@ -68,4 +85,5 @@ export async function dispatchVkInboundReply(params: {
       onModelSelected,
     },
   });
+  params.onDispatchComplete?.(result);
 }

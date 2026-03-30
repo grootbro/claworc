@@ -1,5 +1,8 @@
 import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
-import { createScopedChannelConfigAdapter } from "openclaw/plugin-sdk/channel-config-helpers";
+import {
+  createScopedChannelConfigAdapter,
+  formatTrimmedAllowFromEntries,
+} from "openclaw/plugin-sdk/channel-config-helpers";
 import { buildChannelConfigSchema } from "openclaw/plugin-sdk/channel-config-schema";
 import { createAccountStatusSink } from "openclaw/plugin-sdk/channel-lifecycle";
 import { createChatChannelPlugin } from "openclaw/plugin-sdk/core";
@@ -44,6 +47,11 @@ function normalizeVkMessagingTarget(raw: string): string | undefined {
   return trimmed.replace(/^(vk|vkontakte):/i, "").trim();
 }
 
+function normalizeVkAllowEntry(raw: string): string | undefined {
+  const normalized = normalizeVkMessagingTarget(raw);
+  return normalized?.length ? normalized : undefined;
+}
+
 const vkConfigAdapter = createScopedChannelConfigAdapter<ResolvedVkAccount>({
   sectionKey: "vk",
   listAccountIds: listVkAccountIds,
@@ -51,6 +59,8 @@ const vkConfigAdapter = createScopedChannelConfigAdapter<ResolvedVkAccount>({
   defaultAccountId: resolveDefaultVkAccountId,
   clearBaseFields: ["accessToken", "tokenFile", "name"],
   resolveAllowFrom: (account) => account.config.allowFrom,
+  formatAllowFrom: (allowFrom) =>
+    formatTrimmedAllowFromEntries(allowFrom).map((entry) => normalizeVkAllowEntry(entry) ?? entry),
 });
 
 export const vkPlugin: ChannelPlugin<ResolvedVkAccount> = createChatChannelPlugin({

@@ -106,10 +106,6 @@ export async function sendVkMessage(params: {
   text: string;
   replyToId?: string;
 }): Promise<{ messageId?: number; conversationMessageId?: number }> {
-  const replyTo =
-    typeof params.replyToId === "string" && /^\d+$/.test(params.replyToId.trim())
-      ? Number.parseInt(params.replyToId.trim(), 10)
-      : undefined;
   const response = await vkApiCall<number | { message_id?: number; conversation_message_id?: number }>({
     account: params.account,
     method: "messages.send",
@@ -117,7 +113,6 @@ export async function sendVkMessage(params: {
       peer_id: params.peerId,
       message: params.text,
       random_id: buildVkRandomId(),
-      reply_to: replyTo,
     },
   });
 

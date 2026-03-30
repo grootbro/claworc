@@ -186,6 +186,9 @@ export async function handleVkInbound(params: {
       id: isGroup ? peerId : senderId,
     },
   });
+  runtime.log?.(
+    `vk inbound accepted: peer=${peerId} sender=${senderId} sessionKey=${route.sessionKey} group=${isGroup ? "yes" : "no"}`,
+  );
 
   const storePath = core.channel.session.resolveStorePath(
     (config.session as Record<string, unknown> | undefined)?.store as string | undefined,
@@ -235,6 +238,7 @@ export async function handleVkInbound(params: {
     ctxPayload,
     core,
     deliver: async (payload) => {
+      runtime.log?.(`vk deliver: peer=${peerId} sessionKey=${route.sessionKey}`);
       await deliverVkReply({
         payload,
         peerId,
@@ -242,11 +246,20 @@ export async function handleVkInbound(params: {
         statusSink,
       });
     },
+    updateLastRoute: {
+      sessionKey: route.sessionKey,
+      channel: CHANNEL_ID,
+      to: `vk:${peerId}`,
+      accountId: account.accountId,
+    },
     onRecordError: (error) => {
       runtime.error?.(danger(`vk: failed updating session meta: ${String(error)}`));
     },
     onDispatchError: (error, info) => {
       runtime.error?.(danger(`vk ${info.kind} reply failed: ${String(error)}`));
+    },
+    onDispatchComplete: (result) => {
+      runtime.log?.(`vk dispatch complete: peer=${peerId} sessionKey=${route.sessionKey} result=${JSON.stringify(result)}`);
     },
   });
 
