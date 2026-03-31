@@ -26,6 +26,18 @@ interface FeaturePackPanelProps {
 
 type PackFilter = "all" | "applied" | "available" | "overrides";
 
+function packInputs(pack: Pick<InstanceFeaturePack, "inputs">): FeaturePackInput[] {
+  return Array.isArray(pack.inputs) ? pack.inputs : [];
+}
+
+function packModules(pack: Pick<InstanceFeaturePack, "modules">): FeaturePackModule[] {
+  return Array.isArray(pack.modules) ? pack.modules : [];
+}
+
+function packNotes(pack: Pick<InstanceFeaturePack, "notes">): string[] {
+  return Array.isArray(pack.notes) ? pack.notes : [];
+}
+
 function inputDefault(pack: InstanceFeaturePack, input: FeaturePackInput): string {
   if (input.type === "secret") {
     return "";
@@ -82,7 +94,7 @@ function inputPreview(
     return [];
   }
   const preview: string[] = [];
-  for (const input of pack.inputs) {
+  for (const input of packInputs(pack)) {
     if (!Object.prototype.hasOwnProperty.call(values, input.key)) {
       continue;
     }
@@ -119,7 +131,7 @@ interface InputSectionGroup {
 
 function inputSections(pack: InstanceFeaturePack): InputSectionGroup[] {
   const sections = new Map<string, InputSectionGroup>();
-  for (const input of pack.inputs) {
+  for (const input of packInputs(pack)) {
     const sectionKey = (input.section ?? "General").trim() || "General";
     if (!sections.has(sectionKey)) {
       sections.set(sectionKey, {
@@ -157,8 +169,8 @@ function filterMatches(pack: InstanceFeaturePack, query: string): boolean {
     pack.slug,
     pack.summary,
     pack.category,
-    ...(pack.notes ?? []),
-    ...pack.inputs.map((input) => `${input.label} ${input.description} ${input.key}`),
+    ...packNotes(pack),
+    ...packInputs(pack).map((input) => `${input.label} ${input.description} ${input.key}`),
   ]
     .join(" ")
     .toLowerCase();
@@ -205,7 +217,7 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
           continue;
         }
         next[pack.slug] = Object.fromEntries(
-          pack.inputs.map((input) => [input.key, inputDefault(pack, input)]),
+          packInputs(pack).map((input) => [input.key, inputDefault(pack, input)]),
         );
         changed = true;
       }
@@ -314,9 +326,9 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
         onSuccess: () => {
           setExpanded((current) => ({ ...current, [pack.slug]: true }));
           setFormValues((current) => {
-            const nextValues = { ...(current[pack.slug] ?? {}) };
-            let changed = false;
-            for (const input of pack.inputs) {
+          const nextValues = { ...(current[pack.slug] ?? {}) };
+          let changed = false;
+            for (const input of packInputs(pack)) {
               if (input.type !== "secret") {
                 continue;
               }
@@ -347,12 +359,12 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
   };
 
   return (
-    <section className="overflow-hidden rounded-[30px] border border-gray-200 bg-white/95 shadow-[0_24px_64px_rgba(15,23,42,0.08)]">
-      <div className="border-b border-gray-200 bg-[linear-gradient(135deg,rgba(37,99,235,0.08),transparent_38%),linear-gradient(180deg,rgba(248,250,252,0.9),rgba(255,255,255,0.96))] px-5 py-5 sm:px-6">
+    <section className="feature-pack-studio app-studio-panel overflow-hidden rounded-[30px]">
+      <div className="app-studio-header border-b border-gray-200 px-5 py-5 sm:px-6">
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700">
                 <Sparkles size={13} />
                 Feature Packs
               </div>
@@ -401,7 +413,7 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <label className="space-y-1 xl:min-w-[24rem] xl:max-w-[32rem] xl:flex-1">
             <div className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">Search</div>
-            <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-3 shadow-sm">
+              <div className="app-studio-input-shell flex items-center gap-2 rounded-2xl border border-gray-200 px-3 py-3 shadow-sm">
               <Search size={16} className="text-gray-400" />
               <input
                 value={searchInput}
@@ -506,14 +518,15 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                 const managedPreviews = inputPreview(pack, pack.managed_inputs);
                 const runtimeOverridePreviews = inputPreview(pack, pack.runtime_overrides, { includeEmpty: true });
                 const sections = inputSections(pack);
-                const modules: FeaturePackModule[] = pack.modules ?? [];
+                const modules = packModules(pack);
                 const PackIcon = categoryIcon(pack.category);
-                const hasAsideColumn = managedPreviews.length > 0 || runtimeOverridePreviews.length > 0 || Boolean(pack.notes?.length);
+                const notes = packNotes(pack);
+                const hasAsideColumn = managedPreviews.length > 0 || runtimeOverridePreviews.length > 0 || notes.length > 0;
 
                 return (
                   <article
                     key={pack.slug}
-                    className="overflow-hidden rounded-[28px] border border-blue-200/80 bg-[linear-gradient(180deg,rgba(239,246,255,0.52),rgba(255,255,255,0.96))] shadow-[0_18px_48px_rgba(37,99,235,0.08)]"
+                    className="app-studio-spotlight overflow-hidden rounded-[28px] border border-blue-200/80"
                   >
                     <div className="p-5 sm:p-6">
                       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -618,7 +631,7 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                     </div>
 
                     {isExpanded && (
-                      <div className="border-t border-blue-100 bg-white/90 px-5 py-5 sm:px-6">
+                      <div className="app-studio-detail border-t border-blue-100 px-5 py-5 sm:px-6">
                         <div className="grid gap-5">
                           {hasAsideColumn && (
                             <div className="grid gap-3 xl:grid-cols-2">
@@ -657,14 +670,14 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                                 </div>
                               )}
 
-                              {pack.notes && pack.notes.length > 0 && (
-                                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                              {notes.length > 0 && (
+                                <div className="app-studio-soft rounded-2xl border border-gray-200 p-4">
                                   <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                                     <Sparkles size={16} className="text-blue-500" />
                                     What this pack changes
                                   </div>
                                   <div className="mt-3 space-y-2">
-                                    {pack.notes.map((note) => (
+                                    {notes.map((note) => (
                                       <div key={note} className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
                                         {note}
                                       </div>
@@ -673,7 +686,7 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                                 </div>
                               )}
 
-                              <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                              <div className="app-studio-panel rounded-2xl border border-gray-200 p-4">
                                 <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                                   <LockKeyhole size={16} className="text-gray-500" />
                                   Input behavior
@@ -686,20 +699,20 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                             </div>
                           )}
 
-                          <div className="rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm">
+                          <div className="app-studio-panel rounded-[24px] border border-gray-200 p-4 shadow-sm">
                             <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                               <SlidersHorizontal size={16} className="text-gray-500" />
                               Configure {pack.name}
                             </div>
 
-                            {pack.inputs.length === 0 ? (
+                            {packInputs(pack).length === 0 ? (
                               <div className="mt-4 rounded-2xl border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500">
                                 This pack does not need per-instance inputs.
                               </div>
                             ) : (
                               <div className="mt-4 space-y-4">
                                 {sections.map((section) => (
-                                  <div key={section.key} className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+                                  <div key={section.key} className="app-studio-soft rounded-2xl border border-gray-200 p-4">
                                     <div className="text-sm font-semibold text-gray-900">{section.label}</div>
                                     {section.description && <div className="mt-1 text-xs leading-5 text-gray-500">{section.description}</div>}
 
@@ -805,11 +818,11 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                         const isExpanded = expanded[pack.slug] ?? false;
                         const previews = inputPreview(pack, pack.current_inputs);
                         const sections = inputSections(pack);
-                        const modules: FeaturePackModule[] = pack.modules ?? [];
+                        const modules = packModules(pack);
                         const PackIcon = categoryIcon(pack.category);
 
                         return (
-                          <article key={pack.slug} className="overflow-hidden rounded-[26px] border border-gray-200 bg-white shadow-sm">
+                          <article key={pack.slug} className="app-studio-panel overflow-hidden rounded-[26px] border border-gray-200 shadow-sm">
                             <div className="p-5">
                               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                                 <div className="min-w-0 flex-1">
@@ -891,21 +904,21 @@ export default function FeaturePackPanel({ instanceId, enabled = true }: Feature
                             </div>
 
                             {isExpanded && (
-                              <div className="border-t border-gray-200 px-5 py-5">
-                                <div className="rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm">
+                              <div className="app-studio-detail border-t border-gray-200 px-5 py-5">
+                                <div className="app-studio-panel rounded-[24px] border border-gray-200 p-4 shadow-sm">
                                   <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                                     <SlidersHorizontal size={16} className="text-gray-500" />
                                     Configure {pack.name}
                                   </div>
 
-                                  {pack.inputs.length === 0 ? (
+                                  {packInputs(pack).length === 0 ? (
                                     <div className="mt-4 rounded-2xl border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500">
                                       This pack does not need per-instance inputs.
                                     </div>
                                   ) : (
                                     <div className="mt-4 space-y-4">
                                       {sections.map((section) => (
-                                        <div key={section.key} className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+                                        <div key={section.key} className="app-studio-soft rounded-2xl border border-gray-200 p-4">
                                           <div className="text-sm font-semibold text-gray-900">{section.label}</div>
                                           {section.description && <div className="mt-1 text-xs leading-5 text-gray-500">{section.description}</div>}
 

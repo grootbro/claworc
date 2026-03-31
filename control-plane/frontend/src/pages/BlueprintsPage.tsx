@@ -337,7 +337,7 @@ export default function BlueprintsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="blueprint-studio space-y-6">
       <section className="overflow-hidden rounded-[28px] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(245,158,11,0.18),_transparent_28%),linear-gradient(135deg,#0b1220_0%,#101827_48%,#162032_100%)] p-6 text-white shadow-[0_24px_80px_rgba(15,23,42,0.35)]">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-4xl">
@@ -377,7 +377,7 @@ export default function BlueprintsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-          <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="app-studio-panel rounded-[26px] border border-slate-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Bot size={16} className="text-emerald-600" />
               Source or target bot
@@ -388,7 +388,7 @@ export default function BlueprintsPage() {
 
             <label className="mt-4 block space-y-1">
               <div className="text-xs font-medium text-slate-600">Search bots</div>
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <div className="app-studio-input-shell flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2.5">
                 <Search size={16} className="text-slate-400" />
                 <input
                   value={instanceSearch}
@@ -400,7 +400,7 @@ export default function BlueprintsPage() {
             </label>
           </div>
 
-          <div className="rounded-[26px] border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="app-studio-panel rounded-[26px] border border-slate-200 p-3 shadow-sm">
             {filteredInstances.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-sm text-slate-500">No bots match this search.</div>
             ) : (
@@ -434,7 +434,7 @@ export default function BlueprintsPage() {
             )}
           </div>
 
-          <div className="rounded-[26px] border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <div className="app-studio-note rounded-[26px] border border-emerald-200 p-4 shadow-sm">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Studio notes</div>
             <ul className="mt-3 space-y-2 text-sm leading-6 text-emerald-900">
               <li>Blueprints replay packs in order, so the same safe backup and restart rules still apply.</li>
@@ -446,8 +446,8 @@ export default function BlueprintsPage() {
 
         <section className="space-y-5">
           {selectedInstance && (
-            <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_48%,#ecfeff_100%)] px-5 py-5">
+            <div className="app-studio-panel overflow-hidden rounded-[28px] border border-slate-200 shadow-sm">
+              <div className="app-studio-warm-header border-b border-slate-200 px-5 py-5">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -500,7 +500,7 @@ export default function BlueprintsPage() {
               </div>
 
               <div className="grid gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div className="app-studio-soft rounded-[24px] border border-slate-200 p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     <Wand2 size={16} className="text-violet-500" />
                     Capture this bot as a studio blueprint
@@ -539,7 +539,7 @@ export default function BlueprintsPage() {
                   </label>
                 </div>
 
-                <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+                <div className="app-studio-panel rounded-[24px] border border-slate-200 p-4">
                   <div className="text-sm font-semibold text-slate-900">Capture guidance</div>
                   <div className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
                     <p>Best for mature branded bots like NeoDome, Shirokov, or future client assistants that already have the right voice, trust, and channel stack.</p>
@@ -569,7 +569,7 @@ export default function BlueprintsPage() {
             </div>
           )}
 
-          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="app-studio-panel overflow-hidden rounded-[28px] border border-slate-200 shadow-sm">
             <div className="border-b border-slate-200 px-5 py-5">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
@@ -586,7 +586,7 @@ export default function BlueprintsPage() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <label className="space-y-1">
                     <div className="text-xs font-medium text-slate-600">Search blueprints</div>
-                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="app-studio-input-shell flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2.5">
                       <Search size={16} className="text-slate-400" />
                       <input
                         value={blueprintSearch}
@@ -657,8 +657,8 @@ export default function BlueprintsPage() {
                     const fitStyle = fitTone(fit.kind);
 
                     return (
-                      <article key={blueprint.slug} className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
-                        <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_48%,#fdf4ff_100%)] px-5 py-5">
+                      <article key={blueprint.slug} className="app-studio-panel overflow-hidden rounded-[26px] border border-slate-200 shadow-sm">
+                        <div className="app-studio-lilac-header border-b border-slate-200 px-5 py-5">
                           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
@@ -711,7 +711,7 @@ export default function BlueprintsPage() {
 
                         <div className="grid gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_290px]">
                           <div className="space-y-4">
-                            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                            <div className="app-studio-soft rounded-[22px] border border-slate-200 p-4">
                               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Pack chain</div>
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {blueprint.packs.map((pack, index) => (
@@ -729,13 +729,13 @@ export default function BlueprintsPage() {
                             </div>
 
                             <div className="grid gap-3 sm:grid-cols-2">
-                              <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                              <div className="app-studio-panel rounded-[22px] border border-slate-200 p-4">
                                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Best use</div>
                                 <p className="mt-3 text-sm leading-6 text-slate-600">
                                   Use this when you want a repeatable branded starting point instead of rebuilding trust, voice, and channel behavior manually.
                                 </p>
                               </div>
-                              <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                              <div className="app-studio-panel rounded-[22px] border border-slate-200 p-4">
                                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Operator note</div>
                                 <p className="mt-3 text-sm leading-6 text-slate-600">
                                   Apply here for an existing bot, or use it during create when you want the new bot to boot directly into a known-good stack.
@@ -745,7 +745,7 @@ export default function BlueprintsPage() {
                           </div>
 
                           <div className="space-y-3">
-                            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                            <div className="app-studio-soft rounded-[22px] border border-slate-200 p-4">
                               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Apply path</div>
                               <div className="mt-3 space-y-2 text-sm text-slate-600">
                                 <div>1. Compare against the selected bot.</div>
