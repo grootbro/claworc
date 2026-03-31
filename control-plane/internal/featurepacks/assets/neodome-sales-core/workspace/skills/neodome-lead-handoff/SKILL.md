@@ -42,6 +42,30 @@ When ready:
 1. record or update the lead through `NeoDome Lead Registry`
 2. then route it through `NeoDome Manager Routing`
 
+## Execution path
+
+- In this deployment, use the current session and call the local routing tool through `exec`.
+- Preferred command shape:
+  - `node scripts/lead_registry.mjs route-manager`
+  - pass the qualified lead JSON on stdin
+- Always send canonical JSON fields:
+  - `name`
+  - `contact`
+  - `telegram_username` when available
+  - `market`
+  - `project_type`
+  - `units`
+  - `model_or_use_case`
+  - `budget`
+  - `key_need`
+  - `requested_next_step`
+  - `summary`
+  - `source`
+  - `channel`
+  - `chat_id`
+  - `topic_id` or `thread`
+- Do not use shorthand aliases like `interest`, `goal`, `format`, or `action` in the final routing JSON.
+
 ## Confirmation rules
 
 - Do not expose internal `ND-xxxx` or numeric Telegram ids to the user.

@@ -80,10 +80,37 @@ function readStdin() {
   return fs.readFileSync(0, "utf8");
 }
 
+function parseCliArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (!token.startsWith("--")) continue;
+    const raw = token.slice(2);
+    if (!raw) continue;
+
+    if (raw.includes("=")) {
+      const [key, ...rest] = raw.split("=");
+      out[key] = rest.join("=");
+      continue;
+    }
+
+    const next = argv[i + 1];
+    if (next !== undefined && !next.startsWith("--")) {
+      out[raw] = next;
+      i += 1;
+      continue;
+    }
+
+    out[raw] = true;
+  }
+  return out;
+}
+
 function loadInput() {
+  const cli = parseCliArgs(process.argv.slice(3));
   const raw = readStdin().trim();
-  if (!raw) return {};
-  return JSON.parse(raw);
+  if (!raw) return cli;
+  return { ...cli, ...JSON.parse(raw) };
 }
 
 function clean(value) {
@@ -101,17 +128,152 @@ function boolValue(value) {
   return false;
 }
 
+function looksLikeArea(value) {
+  const text = clean(value).toLowerCase();
+  if (!text) return false;
+  return /м²|м2|m²|m2|кв\.?\s?м|квадрат|sq\.?\s?m/.test(text);
+}
+
+function pickFirst(...values) {
+  for (const value of values) {
+    const cleaned = clean(value);
+    if (cleaned !== "") return cleaned;
+  }
+  return "";
+}
+
+function normalizeRequestedNextStep(value) {
+  const text = clean(value);
+  const normalized = text.toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("смет")) return "подключить менеджера для сметы и коммерческого расчета";
+  if (normalized.includes("quote")) return "подключить менеджера для сметы и коммерческого расчета";
+  if (normalized.includes("брон")) return "подключить менеджера для фиксации и бронирования";
+  if (normalized.includes("звон")) return "подключить менеджера для звонка";
+  if (normalized.includes("call")) return "подключить менеджера для звонка";
+  if (normalized.includes("менедж")) return "подключить менеджера";
+  return text;
+}
+
 function normalizeRecord(input) {
   const record = {};
   for (const [key, fallback] of Object.entries(DEFAULTS)) {
     const incoming = key in input ? input[key] : fallback;
     record[key] = Array.isArray(incoming) ? incoming : clean(incoming);
   }
+
+  const formatValue = pickFirst(input.format, input.size_range, input.area_range);
+  const formatLooksLikeArea = looksLikeArea(formatValue);
+  const objectId = pickFirst(input.object_id, input.facility_id, input.catalog_object_id);
+  const objectName = pickFirst(input.object_name, input.facility_name, input.complex_name);
+  const objectReference = objectName ? `${objectName}${objectId ? ` (ID: ${objectId})` : ""}` : "";
+
+  record.name = pickFirst(record.name, input.sender_name, input.client_name);
+  record.contact = pickFirst(record.contact, input.phone, input.telegram_handle);
+  record.telegram_username = pickFirst(
+    record.telegram_username,
+    input.sender_username,
+    input.telegram_username,
+    input.telegram_handle,
+  );
+  record.telegram_user_id = pickFirst(
+    record.telegram_user_id,
+    input.sender_id,
+    input.telegram_id,
+    input.user_id,
+  );
+  record.region = pickFirst(record.region, input.market, input.location, input.region_label);
+  record.project_type = pickFirst(
+    record.project_type,
+    input.project_type,
+    input.object_type,
+    formatLooksLikeArea ? "" : formatValue,
+  );
+  record.units = pickFirst(
+    record.units,
+    input.units,
+    input.area,
+    input.square,
+    formatLooksLikeArea ? formatValue : "",
+  );
+  record.model_or_use_case = pickFirst(
+    record.model_or_use_case,
+    input.model_or_use_case,
+    input.use_case,
+    input.goal,
+  );
+  record.key_need = pickFirst(
+    record.key_need,
+    input.key_need,
+    input.interest,
+    input.object_interest,
+    objectReference,
+    input.intent,
+  );
+  record.requested_next_step = pickFirst(
+    record.requested_next_step,
+    input.requested_next_step,
+    input.next_step,
+    normalizeRequestedNextStep(input.action),
+    inferNextStep(input),
+  );
+  record.summary = pickFirst(
+    record.summary,
+    input.summary,
+    input.message,
+    input.intent,
+    input.brief,
+  );
+  record.source = pickFirst(record.source, input.source, input.channel);
+  record.thread = pickFirst(
+    record.thread,
+    input.thread,
+    input.chat_id && input.topic_id ? `${input.chat_id}:topic:${input.topic_id}` : "",
+    input.chat_id,
+  );
+
   record.__force_new = boolValue(input.force_new);
   if (!record.stage) record.stage = record.status || "qualified";
   if (!record.status) record.status = record.stage || "qualified";
   if (!record.priority) record.priority = inferPriority(record);
+  record.summary = pickFirst(record.summary, buildSummary(record));
   return record;
+}
+
+function inferNextStep(input) {
+  const text = [
+    input.requested_next_step,
+    input.next_step,
+    input.action,
+    input.intent,
+    input.summary,
+    input.message,
+  ]
+    .map((value) => clean(value).toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+
+  if (!text) return "";
+  if (text.includes("смет")) return "подключить менеджера для сметы и коммерческого расчета";
+  if (text.includes("quote")) return "подключить менеджера для сметы и коммерческого расчета";
+  if (text.includes("брон")) return "подключить менеджера для фиксации и бронирования";
+  if (text.includes("звон")) return "подключить менеджера для звонка";
+  if (text.includes("call")) return "подключить менеджера для звонка";
+  if (text.includes("менедж")) return "подключить менеджера";
+  return "";
+}
+
+function buildSummary(record) {
+  const nextStep = normalizeRequestedNextStep(record.requested_next_step);
+  return [
+    clean(record.key_need),
+    clean(record.model_or_use_case),
+    clean(record.budget) ? `бюджет ${clean(record.budget)}` : "",
+    clean(record.units) ? `масштаб ${clean(record.units)}` : "",
+    clean(nextStep),
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 function inferPriority(record) {
@@ -189,7 +351,7 @@ function matchExisting(records, candidate) {
   }
   for (const record of Object.values(records)) {
     if (!isActive(record)) continue;
-    if (thread && source && record.thread === thread && record.source === source) return record;
+    if (!telegramUserId && !contact && thread && source && record.thread === thread && record.source === source) return record;
   }
   return null;
 }
@@ -234,6 +396,23 @@ function upsertLead(input) {
   return merged;
 }
 
+function previewLeadForRouting(input) {
+  const incoming = normalizeRecord(input);
+  const records = loadRegistry();
+  const requestedLeadId = clean(input.lead_id);
+  const existing = (requestedLeadId && records[requestedLeadId]) || matchExisting(records, incoming);
+  const base = existing || {
+    ...DEFAULTS,
+    lead_id: requestedLeadId || "ND-preview",
+    created_at: now(),
+    updated_at: now(),
+    status: "qualified",
+    stage: "qualified",
+  };
+
+  return mergeRecord(base, incoming);
+}
+
 function formatTelegramUsername(value) {
   const normalized = clean(value);
   if (!normalized) return "";
@@ -275,7 +454,8 @@ function pushSection(lines, title, rows) {
 }
 
 function renderManagerCard(record) {
-  const title = `Новый лид NeoDome · ${record.lead_id}`;
+  const titleName = clean(record.name) || formatTelegramUsername(record.telegram_username) || clean(record.contact) || "без имени";
+  const title = `Новый лид NeoDome · ${record.lead_id} · ${titleName}`;
   const lines = [title];
 
   pushSection(lines, "Статус", [
@@ -308,34 +488,36 @@ function renderManagerCard(record) {
 }
 
 function renderCardMarkdown(record) {
+  const titleName = clean(record.name) || formatTelegramUsername(record.telegram_username) || clean(record.contact) || "без имени";
   const lines = [
-    `# Лид ${record.lead_id} — ${record.name || "без имени"}${record.region ? ` / ${record.region}` : ""}`,
-    "",
-    "## Статус",
-    `- Приоритет: ${record.priority || "не указано"}`,
-    `- Стадия: ${record.stage || record.status || "не указано"}`,
-    `- Последнее обновление: ${record.updated_at || "не указано"}`,
-    `- Что нужно дальше: ${record.requested_next_step || "не указано"}`,
-    "",
-    "## Контакт",
-    ...contactRows(record, { includeSensitiveIds: true }),
-    "",
-    "## Проект",
-    `- Локация: ${record.region || "не указано"}`,
-    `- Формат: ${record.project_type || "не указано"}`,
-    `- Масштаб: ${record.units || "не указано"}`,
-    `- Модель / сценарий: ${record.model_or_use_case || "не указано"}`,
-    `- Срок: ${record.timeline || "не указано"}`,
-    `- Бюджет: ${record.budget || "не указано"}`,
-    "",
-    "## Суть",
-    `- Ключевой запрос: ${record.key_need || "не указано"}`,
-    `- Важные нюансы: ${record.risks || "не указано"}`,
-    "",
-    "## Короткое резюме",
-    record.summary ? `- ${record.summary}` : "- не указано",
-    "",
+    `# Лид ${record.lead_id} — ${titleName}${record.region ? ` / ${record.region}` : ""}`,
   ];
+
+  pushSection(lines, "## Статус", [
+    renderLine("Приоритет", record.priority),
+    renderLine("Стадия", record.stage || record.status),
+    renderLine("Последнее обновление", record.updated_at),
+    renderLine("Что нужно дальше", record.requested_next_step),
+  ]);
+
+  pushSection(lines, "## Контакт", contactRows(record, { includeSensitiveIds: true }));
+
+  pushSection(lines, "## Проект", [
+    renderLine("Локация", record.region),
+    renderLine("Формат", record.project_type),
+    renderLine("Масштаб", record.units),
+    renderLine("Модель / сценарий", record.model_or_use_case),
+    renderLine("Срок", record.timeline),
+    renderLine("Бюджет", record.budget),
+  ]);
+
+  pushSection(lines, "## Суть", [
+    renderLine("Ключевой запрос", record.key_need),
+    renderLine("Важные нюансы", record.risks),
+  ]);
+
+  pushSection(lines, "## Короткое резюме", record.summary ? [`- ${record.summary}`] : []);
+
   return `${lines.join("\n")}\n`;
 }
 
@@ -450,11 +632,19 @@ async function deliverToTelegram(record) {
     const existing = findDeliveryLog(record, target);
     let result;
     if (existing?.message_id) {
-      result = await telegramPost("editMessageText", {
-        chat_id: target.chat_id,
-        message_id: existing.message_id,
-        text: messageText,
-      });
+      try {
+        result = await telegramPost("editMessageText", {
+          chat_id: target.chat_id,
+          message_id: existing.message_id,
+          text: messageText,
+        });
+      } catch (error) {
+        if (String(error?.message || "").includes("message is not modified")) {
+          result = { message_id: existing.message_id };
+        } else {
+          throw error;
+        }
+      }
     } else {
       result = await telegramPost("sendMessage", {
         chat_id: target.chat_id,
@@ -490,6 +680,7 @@ async function deliverToTelegram(record) {
 }
 
 async function routeManager(input) {
+  validateLeadForRouting(previewLeadForRouting(input));
   const lead = upsertLead(input);
   const delivery = await deliverToTelegram(lead);
   lead.manager_delivery_log = delivery.log;
@@ -504,6 +695,31 @@ async function routeManager(input) {
   writeCard(lead);
 
   return lead;
+}
+
+function validateLeadForRouting(lead) {
+  const hasIdentity = Boolean(
+    clean(lead.telegram_user_id) ||
+    clean(lead.telegram_username) ||
+    clean(lead.contact) ||
+    clean(lead.name) ||
+    clean(lead.thread),
+  );
+  const hasCommercialContext = Boolean(
+    clean(lead.key_need) ||
+    clean(lead.summary) ||
+    clean(lead.requested_next_step) ||
+    clean(lead.region) ||
+    clean(lead.project_type) ||
+    clean(lead.model_or_use_case),
+  );
+
+  if (!hasIdentity) {
+    throw new Error("lead routing requires at least one identity field");
+  }
+  if (!hasCommercialContext) {
+    throw new Error("lead routing requires commercial context before delivery");
+  }
 }
 
 function customerConfirmation() {

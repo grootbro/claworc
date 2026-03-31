@@ -3012,6 +3012,7 @@ func renderNeoDomeTargetsJSON(inputs map[string]string, managerUserIDs []int64) 
 		userID := userID
 		targets = append(targets, managerTarget{
 			Name:   fmt.Sprintf("manager-%d", index+1),
+			ChatID: &userID,
 			UserID: &userID,
 		})
 	}
@@ -3191,7 +3192,7 @@ func renderNeoDomeLeadRouting(inputs map[string]string, managerUserIDs []int64) 
 	} else {
 		for index, userID := range managerUserIDs {
 			builder.WriteString(fmt.Sprintf("- `name = manager-%d`\n", index+1))
-			builder.WriteString("  - `chat_id = TODO`\n")
+			builder.WriteString(fmt.Sprintf("  - `chat_id = %d`\n", userID))
 			builder.WriteString(fmt.Sprintf("  - `user_id = %d`\n", userID))
 			builder.WriteString("  - `username = TODO`\n")
 		}
@@ -3313,7 +3314,7 @@ func renderShirokovLeadRouting(inputs map[string]string, managerUserIDs []int64)
 	} else {
 		for index, userID := range managerUserIDs {
 			builder.WriteString(fmt.Sprintf("- `name = manager-%d`\n", index+1))
-			builder.WriteString("  - `chat_id = TODO`\n")
+			builder.WriteString(fmt.Sprintf("  - `chat_id = %d`\n", userID))
 			builder.WriteString(fmt.Sprintf("  - `user_id = %d`\n", userID))
 			builder.WriteString("  - `username = TODO`\n")
 		}
