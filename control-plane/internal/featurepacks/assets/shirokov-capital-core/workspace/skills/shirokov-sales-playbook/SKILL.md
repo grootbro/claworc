@@ -55,6 +55,19 @@ Help the user reason about:
 
 Do not pretend to know a specific object if the workspace does not provide it.
 
+## Current Catalog Routing
+
+If the user asks for:
+
+- exact current objects
+- shortlist from the active base
+- what is in the portfolio now
+- exact prices, ranges, districts, or commissions
+
+then first use `skills/shirokov-lstd-catalog/SKILL.md`.
+
+Do not replace the live catalog with generic market talk if the workspace already has the exact object base.
+
 ## Response Pattern
 
 Prefer this shape:

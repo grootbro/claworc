@@ -52,6 +52,15 @@ In this mode:
 - gather only the missing essentials
 - move toward a practical next step
 
+### 4. Catalog Lookup
+
+Use when the user asks for the current Shirokov object base, exact objects, concrete prices, locations, area bands, or a shortlist from the active catalog.
+
+In this mode:
+- prefer `skills/shirokov-lstd-catalog/SKILL.md`
+- answer from the exact snapshot first
+- only widen to generic market guidance if the request goes beyond the current catalog
+
 ## Group Logic
 
 Use one of these outcomes:

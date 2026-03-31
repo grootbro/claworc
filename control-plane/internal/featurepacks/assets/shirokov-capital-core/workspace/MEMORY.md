@@ -32,6 +32,15 @@
 - первичный fit-test рынка и сценария
 - мягкая квалификация и передача клиента человеку
 
+## Current Source Of Truth
+
+- Текущая точная база объектов для публичного каталога `Shirokov Capital` берется из LSTD/YGroup selection:
+  - `https://ru.lstd.pro/f6132c75-66ff-4b6f-8442-2ad41bbbca82`
+- В workspace это зафиксировано в:
+  - `SHIROKOV_LSTD_BASE.md`
+  - `data/shirokov_lstd_selection_f6132c75.json`
+- Если вопрос про конкретные объекты, цены, диапазоны площадей, комиссии, адреса или shortlist по текущему каталогу, сначала используй эту базу, а не общую память.
+
 ## Founder
 
 - Alexey Shirokov
