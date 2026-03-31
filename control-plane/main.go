@@ -258,6 +258,7 @@ func main() {
 			r.Post("/instances/{id}/ssh-reconnect", handlers.SSHReconnect)
 			r.Get("/instances/{id}/tunnels", handlers.GetTunnelStatus)
 			r.Get("/instances/{id}/stats", handlers.GetInstanceStats)
+			r.Get("/instances/{id}/provider-health", handlers.GetInstanceProviderHealth)
 			r.Post("/instances/{id}/update-image", handlers.UpdateInstanceImage)
 			r.Get("/instances/{id}/backup-archive", handlers.ExportInstanceBackup)
 			r.Post("/instances/{id}/restore-backup", handlers.RestoreInstanceBackup)

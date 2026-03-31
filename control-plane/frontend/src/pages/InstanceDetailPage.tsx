@@ -14,6 +14,7 @@ import FileBrowser from "@/components/FileBrowser";
 import SSHStatus from "@/components/SSHStatus";
 import SSHEventLog from "@/components/SSHEventLog";
 import SSHTroubleshoot from "@/components/SSHTroubleshoot";
+import ProviderHealthPanel from "@/components/ProviderHealthPanel";
 import {
   useInstance,
   useStartInstance,
@@ -1115,6 +1116,8 @@ export default function InstanceDetailPage() {
               )}
             </div>
           )}
+
+          <ProviderHealthPanel instanceId={instanceId} enabled={instance.status === "running"} />
 
           {/* SSH Connection Status */}
           <SSHStatus

@@ -13,6 +13,7 @@ import type {
   ImageContractInspection,
   InstanceFeaturePack,
   ApplyFeaturePackResult,
+  InstanceProviderHealth,
 } from "@/types/instance";
 
 export async function fetchInstances(): Promise<Instance[]> {
@@ -196,6 +197,16 @@ export async function fetchInstanceStats(
   id: number,
 ): Promise<InstanceStats> {
   const { data } = await client.get<InstanceStats>(`/instances/${id}/stats`);
+  return data;
+}
+
+export async function fetchInstanceProviderHealth(
+  id: number,
+  lookbackHours: number = 24,
+): Promise<InstanceProviderHealth> {
+  const { data } = await client.get<InstanceProviderHealth>(`/instances/${id}/provider-health`, {
+    params: { lookback_hours: lookbackHours },
+  });
   return data;
 }
 

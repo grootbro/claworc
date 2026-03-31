@@ -1,7 +1,8 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Bot, CheckCircle2, Search, Sparkles } from "lucide-react";
+import { Activity, CheckCircle2, Layers3, Search, Sparkles, Wand2 } from "lucide-react";
 import FeaturePackPanel from "@/components/FeaturePackPanel";
+import ProviderHealthPanel from "@/components/ProviderHealthPanel";
 import { useInstances } from "@/hooks/useInstances";
 
 function statusClasses(status: string) {
@@ -85,45 +86,51 @@ export default function FeaturePacksPage() {
   const runningCount = instances.filter((instance) => instance.status === "running").length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700">
-            <Sparkles size={13} />
-            Feature Packs
+    <div className="feature-pack-index space-y-6">
+      <section className="overflow-hidden rounded-[28px] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.14),_transparent_24%),linear-gradient(135deg,#081220_0%,#0f1728_48%,#162033_100%)] p-6 text-white shadow-[0_24px_80px_rgba(15,23,42,0.35)]">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-4xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-200">
+              <Sparkles size={13} />
+              Feature Packs
+            </div>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white">Capability control studio</h1>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
+              Feature Packs are the modular building blocks for live OpenClaw bots: channels, trust, voice, sales flow,
+              responsiveness, and brand behavior. Pick the bot, see what is already shaping it, and install the next capability
+              without hand-editing workspace files.
+            </p>
           </div>
-          <h1 className="mt-3 text-2xl font-semibold text-gray-900">Capability catalog for live OpenClaw bots</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
-            Browse the reusable packs once, then apply them to the right bot with a clear setup flow.
-            This page is optimized for “what is active, what does it do, and what should I install next”.
-          </p>
-        </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Instances</div>
-            <div className="mt-2 text-lg font-semibold text-gray-900">{instances.length}</div>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Running</div>
-            <div className="mt-2 flex items-center gap-2 text-lg font-semibold text-gray-900">
-              <CheckCircle2 size={18} className="text-emerald-500" />
-              {runningCount}
+          <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[420px]">
+            <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-4 backdrop-blur">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Instances</div>
+              <div className="mt-2 text-2xl font-semibold text-white">{instances.length}</div>
+              <div className="mt-1 text-xs text-slate-400">Bots in this workspace</div>
             </div>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Setup mode</div>
-            <div className="mt-2 flex items-center gap-2 text-lg font-semibold text-gray-900">
-              <Bot size={18} className="text-blue-500" />
-              Per bot
+            <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-4 backdrop-blur">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Running</div>
+              <div className="mt-2 flex items-center gap-2 text-2xl font-semibold text-white">
+                <CheckCircle2 size={18} className="text-emerald-300" />
+                {runningCount}
+              </div>
+              <div className="mt-1 text-xs text-slate-400">Ready for pack apply</div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-4 backdrop-blur">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Mode</div>
+              <div className="mt-2 flex items-center gap-2 text-2xl font-semibold text-white">
+                <Layers3 size={18} className="text-blue-300" />
+                Per bot
+              </div>
+              <div className="mt-1 text-xs text-slate-400">Modular capability layers</div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="app-studio-panel rounded-[26px] border border-gray-200 p-4 shadow-sm">
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Choose bot</h2>
               <p className="mt-1 text-xs leading-5 text-gray-500">
@@ -133,7 +140,7 @@ export default function FeaturePacksPage() {
 
             <label className="mt-4 block space-y-1">
               <div className="text-xs font-medium text-gray-600">Search instances</div>
-              <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+              <div className="app-studio-input-shell flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2">
                 <Search size={16} className="text-gray-400" />
                 <input
                   value={instanceSearch}
@@ -145,7 +152,7 @@ export default function FeaturePacksPage() {
             </label>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+          <div className="app-studio-panel rounded-[26px] border border-gray-200 p-3 shadow-sm">
             {isLoading ? (
               <div className="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-sm text-gray-500">
                 Loading instances...
@@ -184,16 +191,48 @@ export default function FeaturePacksPage() {
               </div>
             )}
           </div>
+
+              <div className="app-studio-note rounded-[26px] border border-emerald-200 p-4 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Pack vs blueprint</div>
+            <div className="mt-3 space-y-3 text-sm leading-6 text-emerald-950">
+              <div>
+                <span className="font-semibold">Feature Pack</span>: one reusable capability such as Trust, VK, Voice, or Responsiveness.
+              </div>
+              <div>
+                <span className="font-semibold">Blueprint</span>: a saved composition of several packs that defines a full branded bot setup.
+              </div>
+              <Link
+                to={selectedInstance ? `/blueprints?instance=${selectedInstance.id}` : "/blueprints"}
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-white/80 px-3 py-1.5 text-xs font-medium text-emerald-800 transition-colors hover:bg-white"
+              >
+                <Wand2 size={13} />
+                Open Blueprint Studio
+              </Link>
+            </div>
+          </div>
+
+          <div className="app-studio-panel rounded-[26px] border border-gray-200 p-4 shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
+              <Activity size={13} />
+              Operational layer
+            </div>
+            <div className="mt-3 text-sm font-semibold text-gray-900">Live provider health belongs next to packs</div>
+            <div className="mt-2 text-sm leading-6 text-gray-600">
+              Feature Packs show what the bot should be. Provider Health shows what the bot is actually doing right now: latency,
+              errors, timeouts, and failover pressure from recent gateway logs.
+            </div>
+          </div>
         </aside>
 
         <section className="min-w-0 space-y-4">
           {!selectedInstance ? (
-            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-8 text-sm text-gray-500">
+            <div className="app-studio-panel rounded-2xl border border-dashed border-gray-300 px-4 py-8 text-sm text-gray-500">
               Pick an instance to manage its feature packs.
             </div>
           ) : (
             <>
-              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="app-studio-panel overflow-hidden rounded-[28px] border border-gray-200 shadow-sm">
+                <div className="app-studio-header px-5 py-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -222,10 +261,14 @@ export default function FeaturePacksPage() {
                     Feature packs need the bot to be running first, because `claworc` applies them over SSH inside the live OpenClaw home.
                   </div>
                 )}
+                </div>
               </div>
 
               {selectedInstance.status === "running" ? (
-                <FeaturePackPanel instanceId={selectedInstance.id} enabled />
+                <div className="space-y-4">
+                  <ProviderHealthPanel instanceId={selectedInstance.id} enabled />
+                  <FeaturePackPanel instanceId={selectedInstance.id} enabled />
+                </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-4 py-8 text-sm text-amber-800">
                   Start this bot first, then the pack catalog will become fully interactive.

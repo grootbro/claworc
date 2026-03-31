@@ -85,6 +85,42 @@ export interface InstanceStats {
   memory_limit_bytes: number;
 }
 
+export interface InstanceProviderHealthItem {
+  provider_id: number;
+  provider_key: string;
+  provider_name: string;
+  model_id: string;
+  health: "healthy" | "degraded" | "failing" | "idle" | string;
+  total_requests: number;
+  success_requests: number;
+  error_requests: number;
+  timeout_requests: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+  last_status_code: number;
+  last_error_message?: string;
+  last_requested_at: string;
+  last_cost_usd: number;
+}
+
+export interface InstanceProviderHealthSummary {
+  total_requests: number;
+  healthy_providers: number;
+  degraded_providers: number;
+  failing_providers: number;
+  idle_providers: number;
+}
+
+export interface InstanceProviderHealth {
+  instance_id: number;
+  lookback_hours: number;
+  window_start: string;
+  window_end: string;
+  summary: InstanceProviderHealthSummary;
+  providers: InstanceProviderHealthItem[];
+  notes?: string[];
+}
+
 export interface InstanceDoctorResult {
   command: string;
   stdout: string;

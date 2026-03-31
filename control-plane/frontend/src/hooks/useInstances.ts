@@ -19,11 +19,12 @@ import {
   applyInstanceFeaturePack,
   reorderInstances,
   fetchInstanceStats,
+  fetchInstanceProviderHealth,
   updateInstanceImage,
   runInstanceDoctor,
   restoreInstanceBackup,
 } from "@/api/instances";
-import type { Instance, InstanceCreatePayload, InstanceUpdatePayload } from "@/types/instance";
+import type { Instance, InstanceCreatePayload, InstanceProviderHealth, InstanceUpdatePayload } from "@/types/instance";
 
 export function useInstances() {
   return useQuery({
@@ -265,6 +266,17 @@ export function useInstanceStats(id: number, enabled: boolean = true) {
     queryKey: ["instance-stats", id],
     queryFn: () => fetchInstanceStats(id),
     refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useInstanceProviderHealth(id: number, lookbackHours: number = 24, enabled: boolean = true) {
+  return useQuery<InstanceProviderHealth>({
+    queryKey: ["instance-provider-health", id, lookbackHours],
+    queryFn: () => fetchInstanceProviderHealth(id, lookbackHours),
+    refetchInterval: 15_000,
     refetchIntervalInBackground: false,
     enabled,
     retry: false,
