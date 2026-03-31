@@ -39,6 +39,19 @@ type providerHealthSummary struct {
 	IdleProviders     int `json:"idle_providers"`
 }
 
+type providerHealthEvent struct {
+	Kind         string `json:"kind"`
+	Title        string `json:"title"`
+	ProviderID   uint   `json:"provider_id"`
+	ProviderKey  string `json:"provider_key"`
+	ProviderName string `json:"provider_name"`
+	ModelID      string `json:"model_id"`
+	RequestedAt  string `json:"requested_at"`
+	StatusCode   int    `json:"status_code"`
+	LatencyMs    int64  `json:"latency_ms"`
+	Detail       string `json:"detail,omitempty"`
+}
+
 type instanceProviderHealthResponse struct {
 	InstanceID    uint                  `json:"instance_id"`
 	LookbackHours int                   `json:"lookback_hours"`
@@ -46,6 +59,7 @@ type instanceProviderHealthResponse struct {
 	WindowEnd     string                `json:"window_end"`
 	Summary       providerHealthSummary `json:"summary"`
 	Providers     []providerHealthItem  `json:"providers"`
+	RecentEvents  []providerHealthEvent `json:"recent_events,omitempty"`
 	Notes         []string              `json:"notes,omitempty"`
 }
 
@@ -84,6 +98,19 @@ func providerDisplayName(providerKey string) string {
 	return strings.Join(parts, " ")
 }
 
+func providerMeta(providerKeys map[uint]struct{ Key, Name string }, providerID uint) (string, string) {
+	meta := providerKeys[providerID]
+	providerKey := meta.Key
+	if providerKey == "" {
+		providerKey = "unknown"
+	}
+	providerName := meta.Name
+	if providerName == "" {
+		providerName = providerDisplayName(providerKey)
+	}
+	return providerKey, providerName
+}
+
 func classifyProviderHealth(total, errors, timeouts int, avgLatencyMs, p95LatencyMs int64) string {
 	if total == 0 {
 		return "idle"
@@ -114,6 +141,57 @@ func p95Latency(latencies []int64) int64 {
 		index = len(clone) - 1
 	}
 	return clone[index]
+}
+
+func classifyNotableEvent(entry database.LLMRequestLog, providerKey, providerName string) (providerHealthEvent, bool) {
+	lowerError := strings.ToLower(strings.TrimSpace(entry.ErrorMessage))
+	switch {
+	case strings.Contains(lowerError, "timeout"):
+		return providerHealthEvent{
+			Kind:         "timeout",
+			Title:        "Timeout",
+			ProviderID:   entry.ProviderID,
+			ProviderKey:  providerKey,
+			ProviderName: providerName,
+			ModelID:      entry.ModelID,
+			RequestedAt:  formatTimestamp(entry.RequestedAt),
+			StatusCode:   entry.StatusCode,
+			LatencyMs:    entry.LatencyMs,
+			Detail:       entry.ErrorMessage,
+		}, true
+	case strings.TrimSpace(entry.ErrorMessage) != "" || entry.StatusCode >= 400:
+		detail := entry.ErrorMessage
+		if strings.TrimSpace(detail) == "" {
+			detail = "Gateway returned a non-success status."
+		}
+		return providerHealthEvent{
+			Kind:         "error",
+			Title:        "Provider error",
+			ProviderID:   entry.ProviderID,
+			ProviderKey:  providerKey,
+			ProviderName: providerName,
+			ModelID:      entry.ModelID,
+			RequestedAt:  formatTimestamp(entry.RequestedAt),
+			StatusCode:   entry.StatusCode,
+			LatencyMs:    entry.LatencyMs,
+			Detail:       detail,
+		}, true
+	case entry.LatencyMs >= 8000:
+		return providerHealthEvent{
+			Kind:         "slow",
+			Title:        "Slow response",
+			ProviderID:   entry.ProviderID,
+			ProviderKey:  providerKey,
+			ProviderName: providerName,
+			ModelID:      entry.ModelID,
+			RequestedAt:  formatTimestamp(entry.RequestedAt),
+			StatusCode:   entry.StatusCode,
+			LatencyMs:    entry.LatencyMs,
+			Detail:       "High latency in the live gateway path.",
+		}, true
+	default:
+		return providerHealthEvent{}, false
+	}
 }
 
 func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
@@ -178,15 +256,7 @@ func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 		key := strconv.FormatUint(uint64(entry.ProviderID), 10) + "::" + entry.ModelID
 		agg := aggregates[key]
 		if agg == nil {
-			meta := providerKeys[entry.ProviderID]
-			providerKey := meta.Key
-			if providerKey == "" {
-				providerKey = "unknown"
-			}
-			providerName := meta.Name
-			if providerName == "" {
-				providerName = providerDisplayName(providerKey)
-			}
+			providerKey, providerName := providerMeta(providerKeys, entry.ProviderID)
 			agg = &providerHealthAggregate{
 				ProviderID:   entry.ProviderID,
 				ProviderKey:  providerKey,
@@ -213,6 +283,54 @@ func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 			agg.LastErrorMessage = entry.ErrorMessage
 			agg.LastCostUSD = entry.CostUSD
 		}
+	}
+
+	chronologicalLogs := append([]database.LLMRequestLog(nil), logs...)
+	sort.Slice(chronologicalLogs, func(i, j int) bool {
+		return chronologicalLogs[i].RequestedAt.Before(chronologicalLogs[j].RequestedAt)
+	})
+
+	recentEvents := make([]providerHealthEvent, 0, 12)
+	var previousNotable *database.LLMRequestLog
+	for _, entry := range chronologicalLogs {
+		providerKey, providerName := providerMeta(providerKeys, entry.ProviderID)
+		if notable, ok := classifyNotableEvent(entry, providerKey, providerName); ok {
+			recentEvents = append(recentEvents, notable)
+			entryCopy := entry
+			previousNotable = &entryCopy
+			continue
+		}
+
+		if previousNotable == nil {
+			continue
+		}
+
+		isSuccess := entry.StatusCode >= 200 && entry.StatusCode < 400 && strings.TrimSpace(entry.ErrorMessage) == ""
+		if !isSuccess {
+			continue
+		}
+
+		recoveryWindow := entry.RequestedAt.Sub(previousNotable.RequestedAt)
+		if recoveryWindow < 0 || recoveryWindow > 45*time.Second {
+			continue
+		}
+		if previousNotable.ProviderID == entry.ProviderID && previousNotable.ModelID == entry.ModelID {
+			continue
+		}
+
+		recentEvents = append(recentEvents, providerHealthEvent{
+			Kind:         "recovery",
+			Title:        "Possible failover recovery",
+			ProviderID:   entry.ProviderID,
+			ProviderKey:  providerKey,
+			ProviderName: providerName,
+			ModelID:      entry.ModelID,
+			RequestedAt:  formatTimestamp(entry.RequestedAt),
+			StatusCode:   entry.StatusCode,
+			LatencyMs:    entry.LatencyMs,
+			Detail:       "Successful response shortly after a failure on a different provider/model.",
+		})
+		previousNotable = nil
 	}
 
 	items := make([]providerHealthItem, 0, len(aggregates))
@@ -274,9 +392,17 @@ func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 		return items[i].ProviderKey < items[j].ProviderKey
 	})
 
+	sort.Slice(recentEvents, func(i, j int) bool {
+		return recentEvents[i].RequestedAt > recentEvents[j].RequestedAt
+	})
+	if len(recentEvents) > 10 {
+		recentEvents = recentEvents[:10]
+	}
+
 	notes := []string{
 		"Health is inferred from recent shared gateway logs, not from declared pack settings.",
 		"Degraded usually means timeouts, elevated latency, or a non-trivial error rate in the selected window.",
+		"Recent events are operational signals from logs; failover recovery is inferred, not directly emitted by the provider.",
 	}
 	if len(items) == 0 {
 		notes = append(notes, "No recent gateway requests for this bot in the selected lookback window yet.")
@@ -289,6 +415,7 @@ func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 		WindowEnd:     formatTimestamp(windowEnd),
 		Summary:       summary,
 		Providers:     items,
+		RecentEvents:  recentEvents,
 		Notes:         notes,
 	})
 }

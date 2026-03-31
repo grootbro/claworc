@@ -111,6 +111,19 @@ export interface InstanceProviderHealthSummary {
   idle_providers: number;
 }
 
+export interface InstanceProviderHealthEvent {
+  kind: "timeout" | "error" | "slow" | "recovery" | string;
+  title: string;
+  provider_id: number;
+  provider_key: string;
+  provider_name: string;
+  model_id: string;
+  requested_at: string;
+  status_code: number;
+  latency_ms: number;
+  detail?: string;
+}
+
 export interface InstanceProviderHealth {
   instance_id: number;
   lookback_hours: number;
@@ -118,6 +131,7 @@ export interface InstanceProviderHealth {
   window_end: string;
   summary: InstanceProviderHealthSummary;
   providers: InstanceProviderHealthItem[];
+  recent_events?: InstanceProviderHealthEvent[];
   notes?: string[];
 }
 

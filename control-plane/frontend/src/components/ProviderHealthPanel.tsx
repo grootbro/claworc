@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Clock3, Loader2, TimerReset } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Clock3, Loader2, TimerReset, Zap } from "lucide-react";
 import { useInstanceProviderHealth } from "@/hooks/useInstances";
 
 interface ProviderHealthPanelProps {
@@ -27,6 +27,21 @@ function formatMs(value: number) {
     return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)} s`;
   }
   return `${value} ms`;
+}
+
+function eventTone(kind: string) {
+  switch (kind) {
+    case "timeout":
+      return "border-amber-200 bg-amber-50 text-amber-800";
+    case "error":
+      return "border-red-200 bg-red-50 text-red-800";
+    case "slow":
+      return "border-blue-200 bg-blue-50 text-blue-800";
+    case "recovery":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    default:
+      return "border-slate-200 bg-slate-100 text-slate-700";
+  }
 }
 
 export default function ProviderHealthPanel({ instanceId, enabled = true }: ProviderHealthPanelProps) {
@@ -98,6 +113,54 @@ export default function ProviderHealthPanel({ instanceId, enabled = true }: Prov
               {data.notes.map((note) => (
                 <div key={note}>• {note}</div>
               ))}
+            </div>
+          )}
+
+          {data.recent_events && data.recent_events.length > 0 && (
+            <div className="mt-5 rounded-[24px] border border-gray-200 bg-white/70 p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Recent signals</div>
+                  <div className="mt-1 text-sm font-semibold text-gray-900">Timeout, error, slow, and recovery timeline</div>
+                </div>
+                <div className="text-xs text-gray-500">Newest first · live from gateway logs</div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {data.recent_events.map((event, index) => (
+                  <div key={`${event.requested_at}-${event.provider_key}-${event.model_id}-${index}`} className="flex gap-3">
+                    <div className="flex w-7 shrink-0 flex-col items-center">
+                      <div className={`flex h-7 w-7 items-center justify-center rounded-full border ${eventTone(event.kind)}`}>
+                        {event.kind === "recovery" ? <ArrowRight size={14} /> : event.kind === "slow" ? <Zap size={14} /> : <AlertTriangle size={14} />}
+                      </div>
+                      {index !== (data.recent_events?.length ?? 0) - 1 && <div className="mt-1 h-full w-px bg-gray-200" />}
+                    </div>
+
+                    <div className="min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${eventTone(event.kind)}`}>
+                              {event.title}
+                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{event.provider_name}</span>
+                            <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-600">
+                              {event.model_id}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                            <span>{event.requested_at}</span>
+                            <span>Status {event.status_code || "n/a"}</span>
+                            <span>{formatMs(event.latency_ms)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {event.detail && <div className="mt-3 text-sm leading-6 text-gray-600">{event.detail}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
