@@ -488,10 +488,10 @@ var packRegistry = map[string]Definition{
 				Key:          "timeout_ms",
 				Label:        "Timeout (ms)",
 				Description:  "Network timeout for ElevenLabs synthesis requests.",
-				Placeholder:  "20000",
+				Placeholder:  "25000",
 				Type:         InputTypeText,
 				Required:     false,
-				DefaultValue: "20000",
+				DefaultValue: "25000",
 				Section:      "Delivery guardrails",
 			},
 			{
