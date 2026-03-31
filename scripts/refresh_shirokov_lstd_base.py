@@ -53,41 +53,64 @@ def load_snapshot() -> SelectionSnapshot:
     return SelectionSnapshot(selection=selection, facilities=facilities)
 
 
+def load_facility_detail(facility_id: str) -> dict:
+    payload = fetch_json(f"/v1/public/selections/{SELECTION_ID}/facilities/{facility_id}")["data"]
+    return payload
+
+
+def text_list(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    return [value.strip() for value in values if value and value.strip()]
+
+
 def normalized_json(snapshot: SelectionSnapshot) -> dict:
     selection = snapshot.selection
     owner = selection["owner_user"]
     facilities: list[dict] = []
     for facility in snapshot.facilities:
+        detail_payload = load_facility_detail(facility["id"])
+        detail = detail_payload["facility"]
         facilities.append(
             {
-                "id": facility["id"],
-                "name": facility["name"],
-                "city": (facility.get("city") or {}).get("name"),
-                "district": (facility.get("district") or {}).get("name"),
-                "address": facility.get("address"),
-                "description": facility.get("description"),
-                "class": facility.get("class"),
-                "fz214": facility.get("fz214"),
-                "commissioned": facility.get("is_commissioned"),
-                "min_area_m2": facility.get("min_area_m2"),
-                "max_area_m2": facility.get("max_area_m2"),
-                "min_total_price": facility.get("min_total_price"),
-                "min_price_per_m2": facility.get("min_price_per_m2"),
-                "active_lots_amount": facility.get("active_lots_amount"),
-                "lots_count": facility.get("lots_count"),
-                "commission_percent": facility.get("commission_percent"),
-                "commission_share": facility.get("commission_share"),
-                "commissioning_year": facility.get("commissioning_year"),
-                "commissioning_quarter": facility.get("commissioning_quarter"),
-                "has_gas": facility.get("has_gas"),
-                "has_electricity": facility.get("has_electricity"),
-                "has_swimming_pool": facility.get("has_swimming_pool"),
-                "heating_type": facility.get("heating_type"),
-                "territory_type": facility.get("territory_type"),
-                "sewerage_type": facility.get("sewerage_type"),
-                "water_supply_type": facility.get("water_supply_type"),
-                "latitude": (facility.get("location") or {}).get("latitude"),
-                "longitude": (facility.get("location") or {}).get("longitude"),
+                "id": detail["id"],
+                "object_url": f"https://ru.lstd.pro/{SELECTION_ID}/{detail['id']}",
+                "name": detail["name"],
+                "complex_name": detail.get("complex_name"),
+                "city": (detail.get("city") or {}).get("name")
+                or (facility.get("city") or {}).get("name"),
+                "district": (detail.get("district") or {}).get("name")
+                or (facility.get("district") or {}).get("name"),
+                "address": detail.get("address") or facility.get("address"),
+                "description": detail.get("description"),
+                "class": detail.get("class"),
+                "fz214": detail.get("fz214"),
+                "commissioned": detail.get("is_commissioned"),
+                "min_area_m2": detail.get("min_area_m2"),
+                "max_area_m2": detail.get("max_area_m2"),
+                "min_total_price": detail.get("min_total_price"),
+                "min_price_per_m2": detail.get("min_price_per_m2"),
+                "price_per_m2": detail.get("price_per_m2"),
+                "active_lots_amount": detail.get("active_lots_amount")
+                or facility.get("active_lots_amount"),
+                "lots_count": detail.get("lots_count") or facility.get("lots_count"),
+                "commission_percent": detail.get("commission_percent"),
+                "commission_percent_min": detail.get("commission_percent_min"),
+                "commission_percent_max": detail.get("commission_percent_max"),
+                "commission_share": detail.get("commission_share"),
+                "commissioning_year": detail.get("commissioning_year"),
+                "commissioning_quarter": detail.get("commissioning_quarter"),
+                "has_gas": detail.get("has_gas"),
+                "has_electricity": detail.get("has_electricity"),
+                "has_swimming_pool": detail.get("has_swimming_pool"),
+                "heating_type": detail.get("heating_type"),
+                "territory_type": detail.get("territory_type"),
+                "sewerage_type": detail.get("sewerage_type"),
+                "water_supply_type": detail.get("water_supply_type"),
+                "amenities": text_list(detail.get("facility_amenities")),
+                "document_links": detail.get("document_links") or [],
+                "latitude": (detail.get("location") or {}).get("latitude"),
+                "longitude": (detail.get("location") or {}).get("longitude"),
             }
         )
     return {
@@ -165,6 +188,7 @@ def render_markdown(data: dict) -> str:
             [
                 f"### {index}. {facility['name']}",
                 f"- ID: `{facility['id']}`",
+                f"- Ссылка на объект: {facility['object_url']}",
                 f"- География: {facility['city']} / {facility['district']}",
                 f"- Адрес: {facility['address'] or 'не указано'}",
                 f"- Диапазон площадей: {format_area(facility['min_area_m2'], facility['max_area_m2'])}",
@@ -180,6 +204,10 @@ def render_markdown(data: dict) -> str:
         if facility.get("commissioning_year"):
             lines.append(
                 f"- Ввод: {facility['commissioning_year']} Q{facility['commissioning_quarter']}"
+            )
+        if facility.get("amenities"):
+            lines.append(
+                f"- Инфраструктура: {', '.join(facility['amenities'][:8])}"
             )
         if description:
             lines.append(f"- Краткое описание: {description}")

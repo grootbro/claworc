@@ -45,3 +45,5 @@ These files are sourced from:
   2. 3-5 named examples from the snapshot,
   3. one clean next step such as narrowing by budget, district, or object type.
 - Do not answer a catalog question with generic countries or ROI themes when exact objects are available in the snapshot.
+- If the user asks about a specific object, give the direct object URL, not only the selection URL.
+- If there is a direct object page in the snapshot, prefer linking `https://ru.lstd.pro/<selection_id>/<facility_id>`.
