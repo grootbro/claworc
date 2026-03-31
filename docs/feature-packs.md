@@ -153,6 +153,22 @@ It installs:
 It is meant to stay reusable before the team decides whether NeoSfera should
 also get a branded lead-routing pack.
 
+`neosfera-lead-flow` is that branded handoff layer for `NeoSfera`.
+
+It installs:
+
+- native `workspace/leads` files
+- a NeoSfera-specific lead registry script
+- `NS-XXXX` lead numbering
+- branded manager cards and customer-safe handoff confirmations
+- Telegram lead chat / topic routing targets
+
+Use it with:
+
+- `neosfera-core`
+- `telegram-topic-context`
+- `access-trust`
+
 ## Branded lead-flow packs
 
 `shirokov-lead-flow` is the branded handoff and manager-routing pack for `Shirokov Capital`.
