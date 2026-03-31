@@ -47,3 +47,5 @@ These files are sourced from:
 - Do not answer a catalog question with generic countries or ROI themes when exact objects are available in the snapshot.
 - If the user asks about a specific object, give the direct object URL, not only the selection URL.
 - If there is a direct object page in the snapshot, prefer linking `https://ru.lstd.pro/<selection_id>/<facility_id>`.
+- Use the exact city and district labels from the catalog snapshot.
+- Do not turn a district into a city alias. Example: say `Сочи, Адлерский район`, not just `Адлер`, unless the snapshot itself says the city is `Адлер`.

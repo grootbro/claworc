@@ -64,6 +64,19 @@ def text_list(values: list[str] | None) -> list[str]:
     return [value.strip() for value in values if value and value.strip()]
 
 
+def location_label(city: str | None, district: str | None) -> str:
+    city = (city or "").strip()
+    district = (district or "").strip()
+    if city and district:
+        district_suffix = district if district.endswith("район") else f"{district} район"
+        return f"{city}, {district_suffix}"
+    if city:
+        return city
+    if district:
+        return district if district.endswith("район") else f"{district} район"
+    return "не указано"
+
+
 def normalized_json(snapshot: SelectionSnapshot) -> dict:
     selection = snapshot.selection
     owner = selection["owner_user"]
@@ -112,6 +125,9 @@ def normalized_json(snapshot: SelectionSnapshot) -> dict:
                 "latitude": (detail.get("location") or {}).get("latitude"),
                 "longitude": (detail.get("location") or {}).get("longitude"),
             }
+        )
+        facilities[-1]["location_label"] = location_label(
+            facilities[-1]["city"], facilities[-1]["district"]
         )
     return {
         "source_url": SOURCE_URL,
@@ -189,6 +205,7 @@ def render_markdown(data: dict) -> str:
                 f"### {index}. {facility['name']}",
                 f"- ID: `{facility['id']}`",
                 f"- Ссылка на объект: {facility['object_url']}",
+                f"- Локация: {facility['location_label']}",
                 f"- География: {facility['city']} / {facility['district']}",
                 f"- Адрес: {facility['address'] or 'не указано'}",
                 f"- Диапазон площадей: {format_area(facility['min_area_m2'], facility['max_area_m2'])}",

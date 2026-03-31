@@ -92,6 +92,14 @@ function clean(value) {
   return value;
 }
 
+function pickFirst(...values) {
+  for (const value of values) {
+    const cleaned = clean(value);
+    if (cleaned !== "") return cleaned;
+  }
+  return "";
+}
+
 function boolValue(value) {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return Boolean(value);
@@ -107,11 +115,63 @@ function normalizeRecord(input) {
     const incoming = key in input ? input[key] : fallback;
     record[key] = Array.isArray(incoming) ? incoming : clean(incoming);
   }
+
+  record.name = pickFirst(record.name, input.sender_name, input.client_name);
+  record.contact = pickFirst(record.contact, input.phone, input.telegram_handle);
+  record.telegram_username = pickFirst(
+    record.telegram_username,
+    input.sender_username,
+    input.telegram_username,
+    input.telegram_handle,
+  );
+  record.telegram_user_id = pickFirst(
+    record.telegram_user_id,
+    input.sender_id,
+    input.telegram_id,
+    input.user_id,
+  );
+  record.region = pickFirst(record.region, input.market, input.location, input.region_label);
+  record.project_type = pickFirst(
+    record.project_type,
+    input.project_type,
+    input.object_type,
+    input.format,
+  );
+  record.model_or_use_case = pickFirst(
+    record.model_or_use_case,
+    input.model_or_use_case,
+    input.use_case,
+    input.goal,
+  );
+  record.key_need = pickFirst(record.key_need, input.key_need, input.object_interest, input.intent);
+  record.requested_next_step = pickFirst(
+    record.requested_next_step,
+    input.requested_next_step,
+    input.next_step,
+  );
+  record.summary = pickFirst(record.summary, input.summary, input.intent, input.brief);
+  record.source = pickFirst(record.source, input.source, input.channel);
+  record.thread = pickFirst(
+    record.thread,
+    input.thread,
+    input.chat_id && input.topic_id ? `${input.chat_id}:topic:${input.topic_id}` : "",
+    input.chat_id,
+  );
+
   record.__force_new = boolValue(input.force_new);
   if (!record.stage) record.stage = record.status || "qualified";
   if (!record.status) record.status = record.stage || "qualified";
   if (!record.priority) record.priority = inferPriority(record);
   return record;
+}
+
+function displayStage(value) {
+  const normalized = clean(value).toLowerCase();
+  if (normalized === "qualified") return "квалифицирован";
+  if (normalized === "routed") return "передан";
+  if (normalized === "closed_won") return "успешно закрыт";
+  if (normalized === "closed_lost") return "закрыт без сделки";
+  return value || "";
 }
 
 function inferPriority(record) {
@@ -210,8 +270,9 @@ function mergeRecord(existing, incoming) {
 function upsertLead(input) {
   const incoming = normalizeRecord(input);
   const records = loadRegistry();
-  const existing = matchExisting(records, incoming);
-  const leadId = existing?.lead_id || nextLeadId(records);
+  const requestedLeadId = clean(input.lead_id);
+  const existing = (requestedLeadId && records[requestedLeadId]) || matchExisting(records, incoming);
+  const leadId = existing?.lead_id || requestedLeadId || nextLeadId(records);
   const base = existing || {
     ...DEFAULTS,
     lead_id: leadId,
@@ -280,7 +341,7 @@ function renderManagerCard(record) {
 
   pushSection(lines, "Статус", [
     renderLine("Приоритет", record.priority),
-    renderLine("Стадия", record.stage || record.status),
+    renderLine("Стадия", displayStage(record.stage || record.status)),
     renderLine("Что нужно от менеджера", record.requested_next_step),
   ]);
 
@@ -310,32 +371,33 @@ function renderManagerCard(record) {
 function renderCardMarkdown(record) {
   const lines = [
     `# Лид ${record.lead_id} — ${record.name || "без имени"}${record.region ? ` / ${record.region}` : ""}`,
-    "",
-    "## Статус",
-    `- Приоритет: ${record.priority || "не указано"}`,
-    `- Стадия: ${record.stage || record.status || "не указано"}`,
-    `- Последнее обновление: ${record.updated_at || "не указано"}`,
-    `- Что нужно дальше: ${record.requested_next_step || "не указано"}`,
-    "",
-    "## Контакт",
-    ...contactRows(record, { includeSensitiveIds: true }),
-    "",
-    "## Сделка",
-    `- Рынок / локация: ${record.region || "не указано"}`,
-    `- Формат объекта: ${record.project_type || "не указано"}`,
-    `- Сценарий: ${record.model_or_use_case || "не указано"}`,
-    `- Горизонт: ${record.timeline || "не указано"}`,
-    `- Бюджет / чек: ${record.budget || "не указано"}`,
-    `- Масштаб: ${record.units || "не указано"}`,
-    "",
-    "## Суть",
-    `- Ключевой запрос: ${record.key_need || "не указано"}`,
-    `- Важные нюансы: ${record.risks || "не указано"}`,
-    "",
-    "## Короткое резюме",
-    record.summary ? `- ${record.summary}` : "- не указано",
-    "",
   ];
+
+  pushSection(lines, "## Статус", [
+    renderLine("Приоритет", record.priority),
+    renderLine("Стадия", displayStage(record.stage || record.status)),
+    renderLine("Последнее обновление", record.updated_at),
+    renderLine("Что нужно дальше", record.requested_next_step),
+  ]);
+
+  pushSection(lines, "## Контакт", contactRows(record, { includeSensitiveIds: true }));
+
+  pushSection(lines, "## Сделка", [
+    renderLine("Рынок / локация", record.region),
+    renderLine("Формат объекта", record.project_type),
+    renderLine("Сценарий", record.model_or_use_case),
+    renderLine("Горизонт", record.timeline),
+    renderLine("Бюджет / чек", record.budget),
+    renderLine("Масштаб", record.units),
+  ]);
+
+  pushSection(lines, "## Суть", [
+    renderLine("Ключевой запрос", record.key_need),
+    renderLine("Важные нюансы", record.risks),
+  ]);
+
+  pushSection(lines, "## Короткое резюме", record.summary ? [`- ${record.summary}`] : []);
+
   return `${lines.join("\n")}\n`;
 }
 
@@ -450,11 +512,19 @@ async function deliverToTelegram(record) {
     const existing = findDeliveryLog(record, target);
     let result;
     if (existing?.message_id) {
-      result = await telegramPost("editMessageText", {
-        chat_id: target.chat_id,
-        message_id: existing.message_id,
-        text: messageText,
-      });
+      try {
+        result = await telegramPost("editMessageText", {
+          chat_id: target.chat_id,
+          message_id: existing.message_id,
+          text: messageText,
+        });
+      } catch (error) {
+        if (String(error?.message || "").includes("message is not modified")) {
+          result = { message_id: existing.message_id };
+        } else {
+          throw error;
+        }
+      }
     } else {
       result = await telegramPost("sendMessage", {
         chat_id: target.chat_id,
@@ -491,12 +561,12 @@ async function deliverToTelegram(record) {
 
 async function routeManager(input) {
   const lead = upsertLead(input);
+  lead.status = "routed";
+  lead.stage = "routed";
   const delivery = await deliverToTelegram(lead);
   lead.manager_delivery_log = delivery.log;
   lead.manager_route_targets = delivery.routedTargets;
   lead.manager_routed_at = now();
-  lead.status = "routed";
-  lead.stage = "routed";
 
   const records = loadRegistry();
   records[lead.lead_id] = lead;
