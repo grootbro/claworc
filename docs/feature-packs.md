@@ -182,6 +182,28 @@ Pair it with:
 - `access-trust`
 - branded cores such as `neodome-sales-core` or `shirokov-capital-core`
 
+## Model profile pack
+
+`model-profile` is the reusable LLM-stack layer.
+
+It owns:
+
+- primary model
+- fallback chain
+- timeout budget
+
+Use it when:
+
+- one bot should prefer `OpenAI` first and another should prefer `Gemini`
+- you want blueprint reuse to carry the bot’s “thinking stack”, not just messenger behavior
+- you want failover strategy to be operator-managed instead of hidden inside raw config
+
+Pair it with:
+
+- `messenger-responsiveness`
+- `access-trust`
+- branded cores such as `neodome-sales-core` or `shirokov-capital-core`
+
 ## Access and trust pack
 
 `access-trust` is the operator-facing pack for managing who the bot should treat as:

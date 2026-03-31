@@ -46,6 +46,9 @@ function humanizeCategory(category: string): string {
 }
 
 function categoryIcon(category: string) {
+  if (category.includes("model") || category.includes("performance")) {
+    return Sparkles;
+  }
   if (category.includes("access")) {
     return ShieldCheck;
   }

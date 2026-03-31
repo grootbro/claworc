@@ -613,6 +613,64 @@ var packRegistry = map[string]Definition{
 		},
 		buildPlan: buildMessengerResponsivenessPlan,
 	},
+	"model-profile": {
+		Slug:            "model-profile",
+		Name:            "Model Profile",
+		Summary:         "Defines the reusable LLM stack for a bot: primary model, fallback chain, and timeout budget, without mixing that policy into brand-specific oracle packs.",
+		Category:        "model-strategy",
+		Version:         "1",
+		Available:       true,
+		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "primary",
+				Name:    "Primary model",
+				Summary: "Sets the model that should answer first for this bot’s normal turn flow.",
+			},
+			{
+				Key:     "failover",
+				Name:    "Failover chain",
+				Summary: "Defines the ordered fallback models the bot should try when the primary model fails, times out, or rate-limits.",
+			},
+			{
+				Key:     "timeout",
+				Name:    "Timeout budget",
+				Summary: "Keeps the model stack responsive by controlling how long the bot waits before failover or abort.",
+			},
+		},
+		Inputs: []InputDefinition{
+			{
+				Key:                "primary_model",
+				Label:              "Primary model",
+				Description:        "Default primary model for normal replies.",
+				Placeholder:        "openai/gpt-5.2",
+				Type:               InputTypeText,
+				Required:           true,
+				Section:            "Primary model",
+				SectionDescription: "Use this pack to separate “how the bot thinks” from brand identity, access posture, channels, and voice.",
+			},
+			{
+				Key:          "fallback_models",
+				Label:        "Fallback models",
+				Description:  "Comma or newline separated model ids, in failover order.",
+				Placeholder:  "gemini/gemini-3-flash-preview, gemini/gemini-2.5-flash",
+				Type:         InputTypeTextarea,
+				Required:     false,
+				Section:      "Failover chain",
+			},
+			{
+				Key:          "timeout_seconds",
+				Label:        "Timeout (seconds)",
+				Description:  "How long the bot waits on the primary model before failover or abort.",
+				Placeholder:  "12",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "12",
+				Section:      "Timeout budget",
+			},
+		},
+		buildPlan: buildModelProfilePlan,
+	},
 	"telegram-topic-context": {
 		Slug:            "telegram-topic-context",
 		Name:            "Telegram Topic Context",
@@ -1357,6 +1415,8 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 		return detectTelegramTopicContextStatus(rt, configRoot)
 	case "messenger-responsiveness":
 		return detectMessengerResponsivenessStatus(configRoot), nil
+	case "model-profile":
+		return detectModelProfileStatus(configRoot), nil
 	case "vk-channel":
 		return detectVKChannelStatus(configRoot), nil
 	case "max-channel":
@@ -1486,6 +1546,28 @@ func detectMessengerResponsivenessStatus(configRoot map[string]any) *detectedSta
 		},
 		Notes: []string{
 			"Detected from live model timeout, Telegram streaming, and session typing config",
+		},
+	}
+}
+
+func detectModelProfileStatus(configRoot map[string]any) *detectedStatus {
+	primaryModel := nestedString(configRoot, "agents", "defaults", "model", "primary")
+	fallbackModels := nestedStringList(configRoot, "agents", "defaults", "model", "fallbacks")
+	timeoutSeconds := nestedInt(configRoot, "agents", "defaults", "model", "timeoutSeconds")
+
+	if primaryModel == "" && len(fallbackModels) == 0 && timeoutSeconds == 0 {
+		return nil
+	}
+
+	return &detectedStatus{
+		Applied: true,
+		CurrentInputs: map[string]string{
+			"primary_model":   primaryModel,
+			"fallback_models": strings.Join(fallbackModels, ","),
+			"timeout_seconds": strconv.Itoa(timeoutSeconds),
+		},
+		Notes: []string{
+			"Detected from live agent model config",
 		},
 	}
 }
@@ -2259,6 +2341,35 @@ func buildMessengerResponsivenessPlan(inputs map[string]string) (*Plan, error) {
 			"Keeps messenger bots feeling alive by setting a short default model timeout, live Telegram streaming, and session-level typing presence",
 			"Designed to pair with Telegram Topic Context instead of owning access policy, allowlists, or forum behavior",
 			"Reusable across branded oracle packs such as NeoDome Sales Core and Shirokov Capital Core",
+		},
+	}, nil
+}
+
+func buildModelProfilePlan(inputs map[string]string) (*Plan, error) {
+	primaryModel := strings.TrimSpace(inputs["primary_model"])
+	if primaryModel == "" {
+		return nil, validationError{message: "primary_model is required"}
+	}
+	fallbackModels := parseStringList(inputs["fallback_models"])
+	timeoutSeconds, err := parsePositiveInt(inputs["timeout_seconds"], "timeout_seconds")
+	if err != nil {
+		return nil, err
+	}
+	if timeoutSeconds == 0 {
+		timeoutSeconds = 12
+	}
+
+	return &Plan{
+		ConfigPatch: func(root map[string]any) (bool, error) {
+			changed := false
+			changed = setNestedValue(root, []string{"agents", "defaults", "model", "primary"}, primaryModel) || changed
+			changed = setNestedValue(root, []string{"agents", "defaults", "model", "fallbacks"}, stringListToAny(fallbackModels)) || changed
+			changed = setNestedValue(root, []string{"agents", "defaults", "model", "timeoutSeconds"}, timeoutSeconds) || changed
+			return changed, nil
+		},
+		Notes: []string{
+			"Defines the reusable primary model, fallback chain, and timeout budget for this bot",
+			"Use this with branded packs such as NeoDome Sales Core or Shirokov Capital Core so model policy stays portable and operator-managed",
 		},
 	}, nil
 }
