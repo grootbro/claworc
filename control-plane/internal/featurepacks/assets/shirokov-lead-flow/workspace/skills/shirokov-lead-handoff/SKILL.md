@@ -50,6 +50,23 @@ When ready:
 - Preferred command shape:
   - `node scripts/lead_registry.mjs route-manager`
   - pass the qualified lead JSON on stdin
+- Always send canonical JSON fields so manager cards stay consistent across Telegram and Slack:
+  - `name`
+  - `contact`
+  - `telegram_username` or messenger-specific contact when available
+  - `market`
+  - `project_type`
+  - `units`
+  - `model_or_use_case`
+  - `budget`
+  - `key_need`
+  - `requested_next_step`
+  - `summary`
+  - `source`
+  - `channel`
+  - `chat_id`
+  - `topic_id` or `thread`
+- Do not use shorthand aliases like `interest`, `goal`, `format`, or `action` when constructing the final routing JSON. Convert them to the canonical keys above before calling the tool.
 - Only use the short external confirmation after the tool result explicitly shows successful delivery, for example `delivery_completed: true`.
 - If the tool returns `forbidden`, `aborted`, or any error, do not claim the lead was forwarded.
 
