@@ -152,6 +152,36 @@ It:
 
 This is the preferred pattern for generic channel behavior packs that should work across many bots.
 
+## Messenger responsiveness pack
+
+`messenger-responsiveness` is the reusable "make this bot feel awake" layer.
+
+It owns:
+
+- default LLM timeout budget
+- Telegram streaming mode
+- session typing mode
+- session typing refresh interval
+
+Use it when:
+
+- a customer-facing bot feels slow to acknowledge inbound messages
+- typing indicators start too late
+- Telegram replies feel delayed even though the bot itself is healthy
+
+It intentionally does **not** own:
+
+- direct-message access policy
+- allowlists
+- group/topic reply rules
+- brand-specific model selection or sales logic
+
+Pair it with:
+
+- `telegram-topic-context`
+- `access-trust`
+- branded cores such as `neodome-sales-core` or `shirokov-capital-core`
+
 ## Access and trust pack
 
 `access-trust` is the operator-facing pack for managing who the bot should treat as:

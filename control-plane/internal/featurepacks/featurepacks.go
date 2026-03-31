@@ -547,6 +547,72 @@ var packRegistry = map[string]Definition{
 		},
 		buildPlan: buildElevenLabsVoicePlan,
 	},
+	"messenger-responsiveness": {
+		Slug:            "messenger-responsiveness",
+		Name:            "Messenger Responsiveness",
+		Summary:         "Keeps customer-facing bots feeling live by tightening timeout, Telegram streaming, and typing defaults without hard-coding brand-specific oracle logic.",
+		Category:        "channel-behavior",
+		Version:         "1",
+		Available:       true,
+		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "first-response",
+				Name:    "First response latency",
+				Summary: "Shortens the LLM timeout budget and keeps Telegram preview delivery live so bots do not feel stalled before the first answer lands.",
+			},
+			{
+				Key:     "typing-presence",
+				Name:    "Typing presence",
+				Summary: "Starts typing immediately and refreshes the presence loop on a short interval so chats feel active while the model is still working.",
+			},
+		},
+		Inputs: []InputDefinition{
+			{
+				Key:                "model_timeout_seconds",
+				Label:              "Model timeout (seconds)",
+				Description:        "Timeout budget for the default LLM request path before failover or abort. Lower values keep bots from hanging silently for too long.",
+				Placeholder:        "12",
+				Type:               InputTypeText,
+				Required:           false,
+				DefaultValue:       "12",
+				Section:            "First response latency",
+				SectionDescription: "These settings focus on how quickly a bot should acknowledge work and start delivering visible output in messengers.",
+			},
+			{
+				Key:          "telegram_streaming_mode",
+				Label:        "Telegram streaming mode",
+				Description:  "Use `partial` for the best balance of immediacy and calm updates in customer chats.",
+				Placeholder:  "partial",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "partial",
+				Section:      "First response latency",
+			},
+			{
+				Key:                "session_typing_mode",
+				Label:              "Session typing mode",
+				Description:        "Session-level typing policy. `instant` is the best default when the bot should feel awake as soon as a message is accepted.",
+				Placeholder:        "instant",
+				Type:               InputTypeText,
+				Required:           false,
+				DefaultValue:       "instant",
+				Section:            "Typing presence",
+				SectionDescription: "Session typing overrides agent defaults, so these values are the most reliable way to make messenger bots feel fast and alive.",
+			},
+			{
+				Key:          "typing_interval_seconds",
+				Label:        "Typing refresh interval (seconds)",
+				Description:  "How often typing presence should refresh while the model is still working.",
+				Placeholder:  "4",
+				Type:         InputTypeText,
+				Required:     false,
+				DefaultValue: "4",
+				Section:      "Typing presence",
+			},
+		},
+		buildPlan: buildMessengerResponsivenessPlan,
+	},
 	"telegram-topic-context": {
 		Slug:            "telegram-topic-context",
 		Name:            "Telegram Topic Context",
@@ -1289,6 +1355,8 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 		return detectAccessTrustStatus(rt, configRoot)
 	case "telegram-topic-context":
 		return detectTelegramTopicContextStatus(rt, configRoot)
+	case "messenger-responsiveness":
+		return detectMessengerResponsivenessStatus(configRoot), nil
 	case "vk-channel":
 		return detectVKChannelStatus(configRoot), nil
 	case "max-channel":
@@ -1396,6 +1464,30 @@ func detectTelegramTopicContextStatus(rt *Runtime, configRoot map[string]any) (*
 			"Detected from live Telegram config",
 		},
 	}, nil
+}
+
+func detectMessengerResponsivenessStatus(configRoot map[string]any) *detectedStatus {
+	timeoutSeconds := nestedInt(configRoot, "agents", "defaults", "model", "timeoutSeconds")
+	streamingMode := nestedString(configRoot, "channels", "telegram", "streaming")
+	typingMode := nestedString(configRoot, "session", "typingMode")
+	typingIntervalSeconds := nestedInt(configRoot, "session", "typingIntervalSeconds")
+
+	if timeoutSeconds == 0 && streamingMode == "" && typingMode == "" && typingIntervalSeconds == 0 {
+		return nil
+	}
+
+	return &detectedStatus{
+		Applied: true,
+		CurrentInputs: map[string]string{
+			"model_timeout_seconds":    strconv.Itoa(timeoutSeconds),
+			"telegram_streaming_mode":  streamingMode,
+			"session_typing_mode":      typingMode,
+			"typing_interval_seconds":  strconv.Itoa(typingIntervalSeconds),
+		},
+		Notes: []string{
+			"Detected from live model timeout, Telegram streaming, and session typing config",
+		},
+	}
 }
 
 func detectVKChannelStatus(configRoot map[string]any) *detectedStatus {
@@ -2113,6 +2205,60 @@ func buildElevenLabsVoicePlan(inputs map[string]string) (*Plan, error) {
 		Notes: []string{
 			"Configures a reusable ElevenLabs voice layer without baking API secrets into a brand-specific core pack",
 			"Use this with branded oracle packs such as NeoDome Sales Core or Shirokov Capital Core so voice stays portable across bots",
+		},
+	}, nil
+}
+
+func buildMessengerResponsivenessPlan(inputs map[string]string) (*Plan, error) {
+	modelTimeoutSeconds, err := parsePositiveInt(inputs["model_timeout_seconds"], "model_timeout_seconds")
+	if err != nil {
+		return nil, err
+	}
+	if modelTimeoutSeconds == 0 {
+		modelTimeoutSeconds = 12
+	}
+
+	typingIntervalSeconds, err := parsePositiveInt(inputs["typing_interval_seconds"], "typing_interval_seconds")
+	if err != nil {
+		return nil, err
+	}
+	if typingIntervalSeconds == 0 {
+		typingIntervalSeconds = 4
+	}
+
+	streamingMode := strings.TrimSpace(inputs["telegram_streaming_mode"])
+	switch streamingMode {
+	case "", "off", "partial", "block", "progress":
+	default:
+		return nil, validationError{message: "telegram_streaming_mode must be one of: off, partial, block, progress"}
+	}
+	if streamingMode == "" {
+		streamingMode = "partial"
+	}
+
+	typingMode := strings.TrimSpace(inputs["session_typing_mode"])
+	switch typingMode {
+	case "", "never", "instant", "thinking", "message":
+	default:
+		return nil, validationError{message: "session_typing_mode must be one of: never, instant, thinking, message"}
+	}
+	if typingMode == "" {
+		typingMode = "instant"
+	}
+
+	return &Plan{
+		ConfigPatch: func(root map[string]any) (bool, error) {
+			changed := false
+			changed = setNestedValue(root, []string{"agents", "defaults", "model", "timeoutSeconds"}, modelTimeoutSeconds) || changed
+			changed = setNestedValue(root, []string{"channels", "telegram", "streaming"}, streamingMode) || changed
+			changed = setNestedValue(root, []string{"session", "typingMode"}, typingMode) || changed
+			changed = setNestedValue(root, []string{"session", "typingIntervalSeconds"}, typingIntervalSeconds) || changed
+			return changed, nil
+		},
+		Notes: []string{
+			"Keeps messenger bots feeling alive by setting a short default model timeout, live Telegram streaming, and session-level typing presence",
+			"Designed to pair with Telegram Topic Context instead of owning access policy, allowlists, or forum behavior",
+			"Reusable across branded oracle packs such as NeoDome Sales Core and Shirokov Capital Core",
 		},
 	}, nil
 }
