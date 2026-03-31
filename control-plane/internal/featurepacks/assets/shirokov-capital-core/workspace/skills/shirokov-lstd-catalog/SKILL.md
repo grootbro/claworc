@@ -40,3 +40,8 @@ These files are sourced from:
 - Stay compact.
 - Do not dump the whole catalog unless the user asks.
 - Recommend 1-3 best-fit objects, explain why, then offer the next step.
+- If the user asks "what is in the catalog now", answer with:
+  1. total count or scope of the current base,
+  2. 3-5 named examples from the snapshot,
+  3. one clean next step such as narrowing by budget, district, or object type.
+- Do not answer a catalog question with generic countries or ROI themes when exact objects are available in the snapshot.

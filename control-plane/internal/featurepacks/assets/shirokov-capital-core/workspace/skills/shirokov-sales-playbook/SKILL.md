@@ -33,17 +33,15 @@ Try to understand these without turning the chat into a form:
 
 ## Market Routing
 
-If the user has no clear geography yet:
+If the user asks broadly and the conversation is still anchored to the current Shirokov catalog:
 
-- first offer `Крым` and `Сочи`
-- then selectively widen to `Пхукет` and `Батуми`
-- use `Бали` only when it genuinely fits the conversation
+- start from the active `LSTD` base first
+- mention concrete current locations or objects from that base
+- only widen beyond the catalog if the user explicitly asks for broader search or another geography
 
-Explain *why* a market fits:
-- yield logic
-- demand profile
-- exit logic
-- risk profile
+If you widen:
+- explain *why* a market fits
+- keep it secondary to the active catalog
 
 ## Format Routing
 
@@ -67,6 +65,7 @@ If the user asks for:
 then first use `skills/shirokov-lstd-catalog/SKILL.md`.
 
 Do not replace the live catalog with generic market talk if the workspace already has the exact object base.
+Do not answer a catalog question with a geography lecture.
 
 ## Response Pattern
 
@@ -78,9 +77,9 @@ Prefer this shape:
 
 Example:
 
-- "Под ваш сценарий логичнее смотреть Сочи и Крым."
-- "Они лучше совпадают по входному чеку и прогнозируемому спросу."
-- "Если хотите, сузим это до 1-2 форматов под ваш горизонт и бюджет."
+- "В текущем каталоге под ваш сценарий логичнее смотреть 2-3 объекта в Сочи и Красной Поляне."
+- "Они ближе всего к вашему бюджету и формату запроса."
+- "Если хотите, сразу сузим до shortlist по району или бюджету."
 
 ## Handoff Triggers
 
