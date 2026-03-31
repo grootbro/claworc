@@ -2409,12 +2409,12 @@ func buildShirokovLeadFlowPlan(inputs map[string]string) (*Plan, error) {
 				Block: `<!-- claworc:feature-pack shirokov-lead-flow -->
 ## Shirokov lead flow
 
-- Use `Shirokov Lead Handoff` when a client asks for подбор, shortlist, commercial calculation, a call, or a manager.
-- Use `Shirokov Lead Registry` before human routing so one active lead is updated instead of duplicated.
-- Use `Shirokov Manager Routing` only when the lead is ready for a real human next step.
-- In user-facing confirmations, never expose `SC-xxxx`, numeric Telegram ids, raw topic ids, or internal routing language.
-- Use this short customer-facing confirmation after successful handoff: `Готово. Я передал ваш запрос команде Shirokov Capital. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время.`
-- In manager-facing Telegram cards, show only filled fields; do not print long `не указано` blocks.`,
+- Use Shirokov Lead Handoff when a client asks for подбор, shortlist, commercial calculation, a call, or a manager.
+- Use Shirokov Lead Registry before human routing so one active lead is updated instead of duplicated.
+- Use Shirokov Manager Routing only when the lead is ready for a real human next step.
+- In user-facing confirmations, never expose SC-xxxx, numeric Telegram ids, raw topic ids, or internal routing language.
+- Use this short customer-facing confirmation after successful handoff: "Готово. Я передал ваш запрос команде Shirokov Capital. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время."
+- In manager-facing Telegram cards, show only filled fields; do not print long "не указано" blocks.`,
 			},
 		},
 		ConfigPatch: func(root map[string]any) (bool, error) {
