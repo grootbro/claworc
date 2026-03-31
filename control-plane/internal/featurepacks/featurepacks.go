@@ -949,6 +949,72 @@ var packRegistry = map[string]Definition{
 		},
 		buildPlan: buildShirokovCapitalCorePlan,
 	},
+	"shirokov-lead-flow": {
+		Slug:            "shirokov-lead-flow",
+		Name:            "Shirokov Lead Flow",
+		Summary:         "Adds Shirokov Capital lead handoff, native lead registry, compact manager cards, and Telegram chat/topic routing without exposing internal IDs to clients.",
+		Category:        "sales-oracle",
+		Version:         "1",
+		Available:       true,
+		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "lead-flow",
+				Name:    "Lead flow",
+				Summary: "Collects only the missing commercial context, stores qualified leads natively, and keeps one active lead updated instead of duplicating it.",
+			},
+			{
+				Key:     "manager-routing",
+				Name:    "Manager routing",
+				Summary: "Routes ready Shirokov leads into a primary Telegram lead chat/topic and optional direct manager delivery.",
+			},
+			{
+				Key:     "client-safe-confirmation",
+				Name:    "Client-safe confirmation",
+				Summary: "Keeps external handoff confirmations compact and hides internal lead IDs and numeric Telegram identifiers from clients.",
+			},
+		},
+		Inputs: []InputDefinition{
+			{
+				Key:                "primary_sales_chat_id",
+				Label:              "Primary lead chat ID",
+				Description:        "Telegram chat_id for the main Shirokov lead-processing chat or manager group.",
+				Placeholder:        "-1001234567890",
+				Type:               InputTypeText,
+				Required:           false,
+				Section:            "Manager routing",
+				SectionDescription: "These settings decide where qualified Shirokov Capital leads should go after the bot has collected enough context.",
+			},
+			{
+				Key:         "primary_sales_message_thread_id",
+				Label:       "Primary topic ID",
+				Description: "Telegram forum topic id for routing leads inside a manager group.",
+				Placeholder: "305",
+				Type:        InputTypeText,
+				Required:    false,
+				Section:     "Manager routing",
+			},
+			{
+				Key:         "manager_user_ids",
+				Label:       "Direct manager user IDs",
+				Description: "Comma or newline separated Telegram user IDs for duplicate direct delivery.",
+				Placeholder: "240961095,237749873",
+				Type:        InputTypeTextarea,
+				Required:    false,
+				Section:     "Manager routing",
+			},
+			{
+				Key:          "duplicate_direct_delivery",
+				Label:        "Duplicate to direct managers",
+				Description:  "When enabled, the lead is sent to the primary chat/topic first and then duplicated to configured manager direct chats.",
+				Type:         InputTypeBoolean,
+				Required:     false,
+				DefaultValue: "true",
+				Section:      "Manager routing",
+			},
+		},
+		buildPlan: buildShirokovLeadFlowPlan,
+	},
 }
 
 func Definitions() []Definition {
@@ -1427,6 +1493,8 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 		return detectNeoDomeSalesCoreStatus(rt)
 	case "shirokov-capital-core":
 		return detectShirokovCapitalCoreStatus(rt)
+	case "shirokov-lead-flow":
+		return detectShirokovLeadFlowStatus(rt)
 	default:
 		return nil, nil
 	}
@@ -1776,6 +1844,66 @@ func detectShirokovCapitalCoreStatus(rt *Runtime) (*detectedStatus, error) {
 		CurrentInputs: map[string]string{},
 		Notes: []string{
 			"Detected from live Shirokov Capital workspace and oracle skill files",
+		},
+	}, nil
+}
+
+func detectShirokovLeadFlowStatus(rt *Runtime) (*detectedStatus, error) {
+	type managerTarget struct {
+		UserID *int64 `json:"user_id"`
+	}
+	type leadTargets struct {
+		PrimarySalesChatID          *int64          `json:"primary_sales_chat_id"`
+		PrimarySalesMessageThreadID *int64          `json:"primary_sales_message_thread_id"`
+		DuplicateDirectDelivery     bool            `json:"duplicate_direct_delivery"`
+		DirectManagerTargets        []managerTarget `json:"direct_manager_targets"`
+	}
+
+	required := []string{
+		"LEAD_DATABASE.md",
+		"LEAD_ROUTING.md",
+		"scripts/lead_registry.mjs",
+		"skills/shirokov-lead-registry/SKILL.md",
+		"skills/shirokov-manager-routing/SKILL.md",
+	}
+	found := 0
+	for _, rel := range required {
+		if _, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), rel)); err == nil {
+			found++
+		}
+	}
+
+	targetsRaw, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), "leads", "targets.json"))
+	if err != nil && found < 3 {
+		return nil, nil
+	}
+
+	inputs := map[string]string{}
+	if err == nil {
+		var payload leadTargets
+		if json.Unmarshal(targetsRaw, &payload) == nil {
+			if payload.PrimarySalesChatID != nil {
+				inputs["primary_sales_chat_id"] = strconv.FormatInt(*payload.PrimarySalesChatID, 10)
+			}
+			if payload.PrimarySalesMessageThreadID != nil {
+				inputs["primary_sales_message_thread_id"] = strconv.FormatInt(*payload.PrimarySalesMessageThreadID, 10)
+			}
+			managerIDs := make([]string, 0, len(payload.DirectManagerTargets))
+			for _, target := range payload.DirectManagerTargets {
+				if target.UserID != nil {
+					managerIDs = append(managerIDs, strconv.FormatInt(*target.UserID, 10))
+				}
+			}
+			inputs["manager_user_ids"] = strings.Join(managerIDs, ",")
+			inputs["duplicate_direct_delivery"] = strconv.FormatBool(payload.DuplicateDirectDelivery)
+		}
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: inputs,
+		Notes: []string{
+			"Detected from live Shirokov lead routing files",
 		},
 	}, nil
 }
@@ -2223,6 +2351,80 @@ func buildShirokovCapitalCorePlan(inputs map[string]string) (*Plan, error) {
 		Notes: []string{
 			"Installs a branded Shirokov Capital oracle workspace with investment-property consultation and qualification guidance",
 			"Designed to pair with Access & Trust and Telegram Topic Context instead of hard-coding messenger access inside the pack",
+		},
+	}, nil
+}
+
+func buildShirokovLeadFlowPlan(inputs map[string]string) (*Plan, error) {
+	chatID := strings.TrimSpace(inputs["primary_sales_chat_id"])
+	if chatID != "" {
+		if _, err := strconv.ParseInt(chatID, 10, 64); err != nil {
+			return nil, validationError{message: "primary_sales_chat_id must be a numeric Telegram chat_id"}
+		}
+	}
+	topicID := strings.TrimSpace(inputs["primary_sales_message_thread_id"])
+	if topicID != "" {
+		if _, err := strconv.ParseInt(topicID, 10, 64); err != nil {
+			return nil, validationError{message: "primary_sales_message_thread_id must be numeric"}
+		}
+	}
+	managerUserIDs, err := parseNumericList(inputs["manager_user_ids"])
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := staticPackFiles("shirokov-lead-flow")
+	if err != nil {
+		return nil, err
+	}
+
+	files = append(files,
+		ManagedFile{
+			RelativePath: "LEAD_ROUTING.md",
+			Content:      []byte(renderShirokovLeadRouting(inputs, managerUserIDs)),
+		},
+		ManagedFile{
+			RelativePath: "leads/targets.json",
+			Content:      []byte(renderShirokovTargetsJSON(inputs, managerUserIDs)),
+		},
+		ManagedFile{
+			RelativePath: "leads/registry.jsonl",
+			Content:      []byte(""),
+			SeedOnly:     true,
+		},
+		ManagedFile{
+			RelativePath: "leads/SEQUENCE.txt",
+			Content:      []byte("0"),
+			SeedOnly:     true,
+		},
+	)
+
+	return &Plan{
+		Files: files,
+		TextPatches: []ManagedTextPatch{
+			{
+				RelativePath:    "TOOLS.md",
+				Marker:          "claworc:feature-pack shirokov-lead-flow",
+				CreateIfMissing: true,
+				Block: `<!-- claworc:feature-pack shirokov-lead-flow -->
+## Shirokov lead flow
+
+- Use `Shirokov Lead Handoff` when a client asks for подбор, shortlist, commercial calculation, a call, or a manager.
+- Use `Shirokov Lead Registry` before human routing so one active lead is updated instead of duplicated.
+- Use `Shirokov Manager Routing` only when the lead is ready for a real human next step.
+- In user-facing confirmations, never expose `SC-xxxx`, numeric Telegram ids, raw topic ids, or internal routing language.
+- Use this short customer-facing confirmation after successful handoff: `Готово. Я передал ваш запрос команде Shirokov Capital. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время.`
+- In manager-facing Telegram cards, show only filled fields; do not print long `не указано` blocks.`,
+			},
+		},
+		ConfigPatch: func(root map[string]any) (bool, error) {
+			changed := false
+			changed = ensureNestedString(root, []string{"agents", "defaults", "typingMode"}, "message") || changed
+			return changed, nil
+		},
+		Notes: []string{
+			"Installs a Shirokov-native lead registry, handoff skills, and Telegram manager routing files under workspace/leads",
+			"Creates a reusable feature-pack marker so lead routing can be re-applied safely from the UI",
 		},
 	}, nil
 }
@@ -3011,6 +3213,127 @@ func renderNeoDomeLeadRouting(inputs map[string]string, managerUserIDs []int64) 
 	builder.WriteString("- Модель / сценарий:\n")
 	builder.WriteString("- Срок:\n")
 	builder.WriteString("- Бюджет:\n\n")
+	builder.WriteString("`Суть`\n")
+	builder.WriteString("- Ключевой запрос:\n")
+	builder.WriteString("- Важные нюансы:\n\n")
+	builder.WriteString("`Короткое резюме`\n")
+	builder.WriteString("- 2-4 живые строки по сути запроса.\n")
+	builder.WriteString("\nIf a lead already exists and was already routed, edit the previous manager message instead of sending a duplicate where possible.\n")
+	return builder.String()
+}
+
+func renderShirokovTargetsJSON(inputs map[string]string, managerUserIDs []int64) string {
+	type managerTarget struct {
+		Name     string  `json:"name"`
+		ChatID   *int64  `json:"chat_id,omitempty"`
+		UserID   *int64  `json:"user_id,omitempty"`
+		Username *string `json:"username,omitempty"`
+	}
+
+	var chatID *int64
+	if raw := strings.TrimSpace(inputs["primary_sales_chat_id"]); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			chatID = &parsed
+		}
+	}
+	var topicID *int64
+	if raw := strings.TrimSpace(inputs["primary_sales_message_thread_id"]); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			topicID = &parsed
+		}
+	}
+
+	targets := make([]managerTarget, 0, len(managerUserIDs))
+	for index, userID := range managerUserIDs {
+		userID := userID
+		targets = append(targets, managerTarget{
+			Name:   fmt.Sprintf("manager-%d", index+1),
+			UserID: &userID,
+		})
+	}
+
+	payload := map[string]any{
+		"primary_sales_chat_id":           chatID,
+		"primary_sales_message_thread_id": topicID,
+		"duplicate_direct_delivery":       boolFromInput(inputs["duplicate_direct_delivery"]),
+		"direct_manager_targets":          targets,
+	}
+
+	data, _ := json.MarshalIndent(payload, "", "  ")
+	return string(append(data, '\n'))
+}
+
+func renderShirokovLeadRouting(inputs map[string]string, managerUserIDs []int64) string {
+	chatID := strings.TrimSpace(inputs["primary_sales_chat_id"])
+	if chatID == "" {
+		chatID = "TODO"
+	}
+	topicID := strings.TrimSpace(inputs["primary_sales_message_thread_id"])
+	if topicID == "" {
+		topicID = "TODO"
+	}
+	var builder strings.Builder
+	builder.WriteString("# LEAD_ROUTING.md\n\n")
+	builder.WriteString("## Shirokov Capital manager routing policy\n\n")
+	builder.WriteString("This workspace routes qualified Shirokov Capital leads to human managers through Telegram.\n\n")
+	builder.WriteString("## Routing mode\n\n")
+	builder.WriteString("- Primary mode: one internal Telegram lead chat by `chat_id`\n")
+	builder.WriteString("- If the lead chat is a forum supergroup, route into the exact processing topic by `message_thread_id`\n")
+	builder.WriteString("- Optional duplicate mode: direct manager delivery by `user_id`\n")
+	builder.WriteString("- `@username` is for readability only\n\n")
+	builder.WriteString("## Delivery policy\n\n")
+	builder.WriteString("- Send to the primary lead chat first\n")
+	builder.WriteString("- Duplicate to direct managers only if `duplicate_direct_delivery = true`\n")
+	builder.WriteString("- Never confirm handoff before successful send\n")
+	builder.WriteString("- Manager-facing messages may include `SC-xxxx` and numeric Telegram user ids\n")
+	builder.WriteString("- User-facing chats must never expose those internal identifiers\n\n")
+	builder.WriteString("## Trigger policy\n\n")
+	builder.WriteString("Route to a human when at least one is true:\n\n")
+	builder.WriteString("- the user explicitly asks for подбор, shortlist, manager, or a call\n")
+	builder.WriteString("- the user asks for a commercial calculation or concrete object selection\n")
+	builder.WriteString("- the case becomes contractual, investment-sensitive, or high-touch\n")
+	builder.WriteString("- the bot reaches `Escalate` zone\n\n")
+	builder.WriteString("## Minimum ready state\n\n")
+	builder.WriteString("Required before routing:\n\n")
+	builder.WriteString("- at least one contact channel\n")
+	builder.WriteString("- geography or target market\n")
+	builder.WriteString("- investment goal or object scenario\n")
+	builder.WriteString("- requested next step\n\n")
+	builder.WriteString("## Production targets\n\n")
+	builder.WriteString("`primary_sales_chat_id = " + chatID + "`\n\n")
+	builder.WriteString("`primary_sales_message_thread_id = " + topicID + "`\n\n")
+	builder.WriteString("`duplicate_direct_delivery = " + strconv.FormatBool(boolFromInput(inputs["duplicate_direct_delivery"])) + "`\n\n")
+	builder.WriteString("`direct_manager_targets =`\n\n")
+	if len(managerUserIDs) == 0 {
+		builder.WriteString("- `name = manager-1`\n")
+		builder.WriteString("  - `chat_id = TODO`\n")
+		builder.WriteString("  - `user_id = TODO`\n")
+		builder.WriteString("  - `username = TODO`\n")
+	} else {
+		for index, userID := range managerUserIDs {
+			builder.WriteString(fmt.Sprintf("- `name = manager-%d`\n", index+1))
+			builder.WriteString("  - `chat_id = TODO`\n")
+			builder.WriteString(fmt.Sprintf("  - `user_id = %d`\n", userID))
+			builder.WriteString("  - `username = TODO`\n")
+		}
+	}
+	builder.WriteString("\n## Telegram manager card\n\n")
+	builder.WriteString("Use a short Russian lead card:\n\n")
+	builder.WriteString("`Новый лид Shirokov Capital · Анна / Сочи · SC-0001`\n\n")
+	builder.WriteString("`Статус`\n")
+	builder.WriteString("- Приоритет:\n")
+	builder.WriteString("- Стадия:\n")
+	builder.WriteString("- Что нужно от менеджера:\n\n")
+	builder.WriteString("`Контакт`\n")
+	builder.WriteString("- Имя:\n")
+	builder.WriteString("- Telegram: @username\n")
+	builder.WriteString("- Связь:\n\n")
+	builder.WriteString("`Сделка`\n")
+	builder.WriteString("- Рынок / локация:\n")
+	builder.WriteString("- Формат объекта:\n")
+	builder.WriteString("- Сценарий:\n")
+	builder.WriteString("- Горизонт:\n")
+	builder.WriteString("- Бюджет / чек:\n\n")
 	builder.WriteString("`Суть`\n")
 	builder.WriteString("- Ключевой запрос:\n")
 	builder.WriteString("- Важные нюансы:\n\n")

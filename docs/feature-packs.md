@@ -140,6 +140,26 @@ This is the recommended authoring model for new branded bots:
 3. layer channels separately
 4. save the final composition as a blueprint
 
+## Branded lead-flow packs
+
+`shirokov-lead-flow` is the branded handoff and manager-routing pack for `Shirokov Capital`.
+
+It installs:
+
+- native `workspace/leads` files
+- a Shirokov-specific lead registry script
+- `SC-XXXX` lead numbering
+- branded manager cards and customer-safe handoff confirmations
+- Telegram lead chat / topic routing targets
+
+Use it with:
+
+- `shirokov-capital-core`
+- `telegram-topic-context`
+- `access-trust`
+
+This is the recommended pattern when a branded oracle should stay reusable on its own, but the team later wants UI-managed lead routing for that specific brand.
+
 ## Reusable behavior pack
 
 `telegram-topic-context` is a lighter, reusable pack for any bot that already uses Telegram.

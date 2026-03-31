@@ -20,3 +20,7 @@ This pack is meant to be combined with:
 It intentionally does **not** hard-code manager routing or a lead registry yet.
 That keeps the branded oracle reusable before a team decides how handoff and
 CRM logic should work for this brand.
+
+When the team is ready to route leads through Telegram, add:
+
+- `shirokov-lead-flow`

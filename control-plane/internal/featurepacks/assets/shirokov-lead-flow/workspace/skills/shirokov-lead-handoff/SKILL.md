@@ -1,0 +1,49 @@
+---
+name: Shirokov Lead Handoff
+description: Use when a prospect becomes commercially warm and it is time to collect the minimum useful inputs for a clean manager handoff.
+---
+
+# Shirokov Lead Handoff
+
+Use this skill when the user:
+
+- asks for подбор
+- wants a shortlist or commercial calculation
+- asks for a manager or a call
+- is choosing between real markets, formats, or deal scenarios
+- is clearly a warm lead
+
+## Collect only what is needed
+
+Ask only for missing items:
+
+- name
+- phone or Telegram
+- market / region
+- investment goal or object scenario
+- budget or ticket size
+- time horizon
+- preferred format or shortlist direction
+
+Do not restart qualification from zero if half the context is already known.
+
+## Minimum ready state
+
+Treat a lead as ready for handoff when all of the following are known:
+
+- at least one contact channel
+- geography or target market
+- investment goal, object scenario, or requested selection direction
+- requested next step
+
+When ready:
+
+1. record or update the lead through `Shirokov Lead Registry`
+2. then route it through `Shirokov Manager Routing`
+
+## Confirmation rules
+
+- Do not expose internal `SC-xxxx` or numeric Telegram ids to the user.
+- Never claim the lead was forwarded until manager routing actually succeeded.
+- After a successful handoff, use a short external confirmation without internal ids: `Готово. Я передал ваш запрос команде Shirokov Capital. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время.`
+- Keep the external confirmation compact. Do not turn it into a long recap unless the user explicitly asks for details.
