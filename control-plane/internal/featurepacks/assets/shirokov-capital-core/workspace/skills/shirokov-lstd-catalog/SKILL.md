@@ -40,6 +40,7 @@ These files are sourced from:
 - Stay compact.
 - Do not dump the whole catalog unless the user asks.
 - Recommend 1-3 best-fit objects, explain why, then offer the next step.
+- In messenger chats, prefer one compact line per object instead of long formatted blocks.
 - If the user asks "what is in the catalog now", answer with:
   1. total count or scope of the current base,
   2. 3-5 named examples from the snapshot,
@@ -49,3 +50,4 @@ These files are sourced from:
 - If there is a direct object page in the snapshot, prefer linking `https://ru.lstd.pro/<selection_id>/<facility_id>`.
 - Use the exact city and district labels from the catalog snapshot.
 - Do not turn a district into a city alias. Example: say `Сочи, Адлерский район`, not just `Адлер`, unless the snapshot itself says the city is `Адлер`.
+- If the user asks for details on one object, answer with the direct URL plus 3-5 factual lines максимум.

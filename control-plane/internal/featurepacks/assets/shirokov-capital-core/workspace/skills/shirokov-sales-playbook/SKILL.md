@@ -75,6 +75,14 @@ Prefer this shape:
 2. Why it fits
 3. One next step
 
+Messenger default:
+
+- keep it to 1 message
+- keep it compact: usually 2-6 short lines
+- for catalog recommendations, prefer 1-3 concrete objects max
+- each recommended object should usually fit on one line: name, exact location, price from, why it fits
+- if the user replies with `1`, `2`, or `3` right after your numbered options, treat it as a direct selection of that option
+
 Example:
 
 - "В текущем каталоге под ваш сценарий логичнее смотреть 2-3 объекта в Сочи и Красной Поляне."
@@ -94,6 +102,7 @@ At that point:
 - summarize the known inputs clearly
 - say what still matters if anything is missing
 - avoid exposing internal IDs or internal routing language
+- if the user already chose the manager/call option, stop consulting and move straight into the lead-flow
 
 ## Hard Boundaries
 

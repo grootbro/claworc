@@ -2412,6 +2412,7 @@ func buildShirokovLeadFlowPlan(inputs map[string]string) (*Plan, error) {
 - Use Shirokov Lead Handoff when a client asks for подбор, shortlist, commercial calculation, a call, or a manager.
 - Use Shirokov Lead Registry before human routing so one active lead is updated instead of duplicated.
 - Use Shirokov Manager Routing only when the lead is ready for a real human next step.
+- In Telegram group sessions, do not use sessions_spawn or subagents for this handoff. Use the current session and direct local routing via node scripts/lead_registry.mjs route-manager.
 - In user-facing confirmations, never expose SC-xxxx, numeric Telegram ids, raw topic ids, or internal routing language.
 - Use this short customer-facing confirmation after successful handoff: "Готово. Я передал ваш запрос команде Shirokov Capital. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время."
 - In manager-facing Telegram cards, show only filled fields; do not print long "не указано" blocks.`,

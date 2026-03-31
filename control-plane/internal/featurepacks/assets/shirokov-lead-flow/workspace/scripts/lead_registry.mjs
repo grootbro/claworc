@@ -249,7 +249,12 @@ function matchExisting(records, candidate) {
   }
   for (const record of Object.values(records)) {
     if (!isActive(record)) continue;
-    if (thread && source && record.thread === thread && record.source === source) return record;
+    // In shared group topics, thread/source alone is too weak when we already
+    // know who the sender is. Only fall back to thread matching if there is no
+    // direct identity signal such as Telegram user id or explicit contact.
+    if (!telegramUserId && !contact && thread && source && record.thread === thread && record.source === source) {
+      return record;
+    }
   }
   return null;
 }

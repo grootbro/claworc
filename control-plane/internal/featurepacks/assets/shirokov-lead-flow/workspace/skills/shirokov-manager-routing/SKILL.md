@@ -18,7 +18,8 @@ Before routing:
 
 Preferred implementation path:
 
-- `node scripts/lead_registry.mjs route-manager`
+- Use `exec` in the current session, not `sessions_spawn`
+- Run `node scripts/lead_registry.mjs route-manager`
 - pass the qualified lead JSON on stdin
 
 Let the script:
@@ -34,6 +35,7 @@ Let the script:
 - Prefer one manager group or topic as the primary destination.
 - Use direct manager messages as optional duplicates.
 - Do not claim delivery until the send actually succeeded.
+- Treat `forbidden`, `aborted`, missing `delivery_completed`, or other tool failures as non-delivery.
 - Manager-facing cards may include internal lead ids and numeric Telegram ids.
 - User-facing chats must never expose those internal identifiers.
 - In manager-facing cards, omit optional empty lines instead of printing long `не указано` blocks.

@@ -7,6 +7,7 @@
 - Для консультационного флоу — `shirokov-sales-playbook`
 - Для широкой real-estate экспертизы — `real-estate-skill`
 - Для внешних сервисов, которых нет нативно на боте, можно использовать `api-gateway`, но только когда это действительно нужно
+- Для готового manager handoff используй текущую сессию и `exec` с `node scripts/lead_registry.mjs route-manager`; не используй `sessions_spawn` и subagent-путь в Telegram group sessions
 
 ## Safety
 

@@ -43,6 +43,16 @@ When ready:
 1. record or update the lead through `Shirokov Lead Registry`
 2. then route it through `Shirokov Manager Routing`
 
+## Execution Path
+
+- In this deployment, do not use `sessions_spawn`, `subagent`, or any background handoff path for Telegram group sessions.
+- Use the current session and call the local routing tool directly through `exec`.
+- Preferred command shape:
+  - `node scripts/lead_registry.mjs route-manager`
+  - pass the qualified lead JSON on stdin
+- Only use the short external confirmation after the tool result explicitly shows successful delivery, for example `delivery_completed: true`.
+- If the tool returns `forbidden`, `aborted`, or any error, do not claim the lead was forwarded.
+
 ## Confirmation rules
 
 - Do not expose internal `SC-xxxx` or numeric Telegram ids to the user.
