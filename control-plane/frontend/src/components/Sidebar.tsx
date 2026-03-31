@@ -10,6 +10,7 @@ import {
   BookOpen,
   Boxes,
   Bot,
+  Activity,
 } from "lucide-react";
 import { useHealth } from "@/hooks/useHealth";
 import { useAuth } from "@/contexts/AuthContext";
@@ -137,6 +138,12 @@ export default function Sidebar() {
               <Boxes size={18} className="shrink-0" />
               <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden text-sm">
                 Feature Packs
+              </span>
+            </Link>
+            <Link to="/provider-health" className={navLinkClass("/provider-health")}>
+              <Activity size={18} className="shrink-0" />
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden text-sm">
+                Provider Health
               </span>
             </Link>
             <Link to="/users" className={navLinkClass("/users")}>

@@ -52,6 +52,12 @@ type providerHealthEvent struct {
 	Detail       string `json:"detail,omitempty"`
 }
 
+type providerHealthSeriesPoint struct {
+	BucketStart  string `json:"bucket_start"`
+	AvgLatencyMs int64  `json:"avg_latency_ms"`
+	RequestCount int    `json:"request_count"`
+}
+
 type instanceProviderHealthResponse struct {
 	InstanceID    uint                  `json:"instance_id"`
 	LookbackHours int                   `json:"lookback_hours"`
@@ -59,6 +65,7 @@ type instanceProviderHealthResponse struct {
 	WindowEnd     string                `json:"window_end"`
 	Summary       providerHealthSummary `json:"summary"`
 	Providers     []providerHealthItem  `json:"providers"`
+	LatencySeries []providerHealthSeriesPoint `json:"latency_series,omitempty"`
 	RecentEvents  []providerHealthEvent `json:"recent_events,omitempty"`
 	Notes         []string              `json:"notes,omitempty"`
 }
@@ -194,6 +201,19 @@ func classifyNotableEvent(entry database.LLMRequestLog, providerKey, providerNam
 	}
 }
 
+func healthWindowBuckets(lookbackHours int) (int, time.Duration) {
+	switch {
+	case lookbackHours <= 1:
+		return 12, 5 * time.Minute
+	case lookbackHours <= 6:
+		return 18, 20 * time.Minute
+	case lookbackHours <= 24:
+		return 24, time.Hour
+	default:
+		return 28, 6 * time.Hour
+	}
+}
+
 func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
@@ -252,6 +272,9 @@ func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 
 	aggregates := map[string]*providerHealthAggregate{}
 	summary := providerHealthSummary{}
+	bucketCount, bucketSize := healthWindowBuckets(lookbackHours)
+	seriesTotals := make([]int64, bucketCount)
+	seriesCounts := make([]int, bucketCount)
 	for _, entry := range logs {
 		key := strconv.FormatUint(uint64(entry.ProviderID), 10) + "::" + entry.ModelID
 		agg := aggregates[key]
@@ -277,6 +300,15 @@ func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 		}
 		agg.LatencyTotalMs += entry.LatencyMs
 		agg.Latencies = append(agg.Latencies, entry.LatencyMs)
+		bucketIndex := int(entry.RequestedAt.Sub(windowStart) / bucketSize)
+		if bucketIndex < 0 {
+			bucketIndex = 0
+		}
+		if bucketIndex >= bucketCount {
+			bucketIndex = bucketCount - 1
+		}
+		seriesTotals[bucketIndex] += entry.LatencyMs
+		seriesCounts[bucketIndex]++
 		if entry.RequestedAt.After(agg.LastRequestedAt) {
 			agg.LastRequestedAt = entry.RequestedAt
 			agg.LastStatusCode = entry.StatusCode
@@ -399,6 +431,20 @@ func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 		recentEvents = recentEvents[:10]
 	}
 
+	latencySeries := make([]providerHealthSeriesPoint, 0, bucketCount)
+	for index := 0; index < bucketCount; index++ {
+		bucketStart := windowStart.Add(time.Duration(index) * bucketSize)
+		avgLatency := int64(0)
+		if seriesCounts[index] > 0 {
+			avgLatency = seriesTotals[index] / int64(seriesCounts[index])
+		}
+		latencySeries = append(latencySeries, providerHealthSeriesPoint{
+			BucketStart:  formatTimestamp(bucketStart),
+			AvgLatencyMs: avgLatency,
+			RequestCount: seriesCounts[index],
+		})
+	}
+
 	notes := []string{
 		"Health is inferred from recent shared gateway logs, not from declared pack settings.",
 		"Degraded usually means timeouts, elevated latency, or a non-trivial error rate in the selected window.",
@@ -415,6 +461,7 @@ func GetInstanceProviderHealth(w http.ResponseWriter, r *http.Request) {
 		WindowEnd:     formatTimestamp(windowEnd),
 		Summary:       summary,
 		Providers:     items,
+		LatencySeries: latencySeries,
 		RecentEvents:  recentEvents,
 		Notes:         notes,
 	})

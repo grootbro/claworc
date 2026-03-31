@@ -124,6 +124,12 @@ export interface InstanceProviderHealthEvent {
   detail?: string;
 }
 
+export interface InstanceProviderHealthSeriesPoint {
+  bucket_start: string;
+  avg_latency_ms: number;
+  request_count: number;
+}
+
 export interface InstanceProviderHealth {
   instance_id: number;
   lookback_hours: number;
@@ -131,6 +137,7 @@ export interface InstanceProviderHealth {
   window_end: string;
   summary: InstanceProviderHealthSummary;
   providers: InstanceProviderHealthItem[];
+  latency_series?: InstanceProviderHealthSeriesPoint[];
   recent_events?: InstanceProviderHealthEvent[];
   notes?: string[];
 }

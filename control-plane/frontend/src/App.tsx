@@ -13,6 +13,7 @@ import ChatPopupPage from "./pages/ChatPopupPage";
 import SkillsPage from "./pages/SkillsPage";
 import FeaturePacksPage from "./pages/FeaturePacksPage";
 import BlueprintsPage from "./pages/BlueprintsPage";
+import ProviderHealthPage from "./pages/ProviderHealthPage";
 import { useAuth } from "./contexts/AuthContext";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -104,6 +105,14 @@ export default function App() {
           element={
             <AdminRoute>
               <FeaturePacksPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/provider-health"
+          element={
+            <AdminRoute>
+              <ProviderHealthPage />
             </AdminRoute>
           }
         />
