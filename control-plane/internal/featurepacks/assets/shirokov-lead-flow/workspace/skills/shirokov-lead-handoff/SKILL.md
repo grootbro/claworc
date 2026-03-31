@@ -36,6 +36,8 @@ Treat a lead as ready for handoff when all of the following are known:
 - investment goal, object scenario, or requested selection direction
 - requested next step
 
+For Telegram or Slack conversations, the current active messenger thread already counts as a valid contact channel unless the user explicitly asks to switch elsewhere.
+
 When ready:
 
 1. record or update the lead through `Shirokov Lead Registry`
@@ -47,3 +49,5 @@ When ready:
 - Never claim the lead was forwarded until manager routing actually succeeded.
 - After a successful handoff, use a short external confirmation without internal ids: `Готово. Я передал ваш запрос команде Shirokov Capital. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время.`
 - Keep the external confirmation compact. Do not turn it into a long recap unless the user explicitly asks for details.
+- Do not add hype, slang, or a cascade of emojis in the confirmation.
+- Do not split the handoff confirmation into multiple user-facing messages.
