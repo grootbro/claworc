@@ -650,13 +650,13 @@ var packRegistry = map[string]Definition{
 				SectionDescription: "Use this pack to separate “how the bot thinks” from brand identity, access posture, channels, and voice.",
 			},
 			{
-				Key:          "fallback_models",
-				Label:        "Fallback models",
-				Description:  "Comma or newline separated model ids, in failover order.",
-				Placeholder:  "gemini/gemini-3-flash-preview, gemini/gemini-2.5-flash",
-				Type:         InputTypeTextarea,
-				Required:     false,
-				Section:      "Failover chain",
+				Key:         "fallback_models",
+				Label:       "Fallback models",
+				Description: "Comma or newline separated model ids, in failover order.",
+				Placeholder: "gemini/gemini-3-flash-preview, gemini/gemini-2.5-flash",
+				Type:        InputTypeTextarea,
+				Required:    false,
+				Section:     "Failover chain",
 			},
 			{
 				Key:          "timeout_seconds",
@@ -948,6 +948,38 @@ var packRegistry = map[string]Definition{
 			},
 		},
 		buildPlan: buildShirokovCapitalCorePlan,
+	},
+	"neosfera-core": {
+		Slug:            "neosfera-core",
+		Name:            "NeoSfera Core",
+		Summary:         "Installs a branded NeoSfera oracle workspace for sessions, diagnostics, training, and partner conversations with compact messenger guardrails.",
+		Category:        "sales-oracle",
+		Version:         "1",
+		Available:       true,
+		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "brand-oracle",
+				Name:    "Brand oracle",
+				Summary: "Sets the NeoSfera voice, public-vs-trusted posture, and compact identity handling for branded messenger conversations.",
+			},
+			{
+				Key:     "session-guidance",
+				Name:    "Session guidance",
+				Summary: "Guides users through NeoSfera sessions, diagnostics, and product positioning without drifting into generic wellness-chat mode.",
+			},
+			{
+				Key:     "training-and-partners",
+				Name:    "Training and partners",
+				Summary: "Supports operator training, cabinet launch, and partner/franchise interest with clear next-step routing language.",
+			},
+			{
+				Key:     "safe-posture",
+				Name:    "Safe posture",
+				Summary: "Keeps claims careful, avoids medical overpromising, and stays compact in public chats by default.",
+			},
+		},
+		buildPlan: buildNeoSferaCorePlan,
 	},
 	"shirokov-lead-flow": {
 		Slug:            "shirokov-lead-flow",
@@ -1493,6 +1525,8 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 		return detectNeoDomeSalesCoreStatus(rt)
 	case "shirokov-capital-core":
 		return detectShirokovCapitalCoreStatus(rt)
+	case "neosfera-core":
+		return detectNeoSferaCoreStatus(rt)
 	case "shirokov-lead-flow":
 		return detectShirokovLeadFlowStatus(rt)
 	default:
@@ -1607,10 +1641,10 @@ func detectMessengerResponsivenessStatus(configRoot map[string]any) *detectedSta
 	return &detectedStatus{
 		Applied: true,
 		CurrentInputs: map[string]string{
-			"model_timeout_seconds":    strconv.Itoa(timeoutSeconds),
-			"telegram_streaming_mode":  streamingMode,
-			"session_typing_mode":      typingMode,
-			"typing_interval_seconds":  strconv.Itoa(typingIntervalSeconds),
+			"model_timeout_seconds":   strconv.Itoa(timeoutSeconds),
+			"telegram_streaming_mode": streamingMode,
+			"session_typing_mode":     typingMode,
+			"typing_interval_seconds": strconv.Itoa(typingIntervalSeconds),
 		},
 		Notes: []string{
 			"Detected from live model timeout, Telegram streaming, and session typing config",
@@ -1844,6 +1878,48 @@ func detectShirokovCapitalCoreStatus(rt *Runtime) (*detectedStatus, error) {
 		CurrentInputs: map[string]string{},
 		Notes: []string{
 			"Detected from live Shirokov Capital workspace and oracle skill files",
+		},
+	}, nil
+}
+
+func detectNeoSferaCoreStatus(rt *Runtime) (*detectedStatus, error) {
+	required := []string{
+		"BOOTSTRAP.md",
+		"IDENTITY.md",
+		"SOUL.md",
+		"AGENTS.md",
+		"MEMORY.md",
+		"TOOLS.md",
+		"USER.md",
+		"PRODUCTS.md",
+		"skills/neosfera-oracle-router/SKILL.md",
+		"skills/neosfera-consultation-playbook/SKILL.md",
+	}
+
+	found := 0
+	for _, rel := range required {
+		if _, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), rel)); err == nil {
+			found++
+		}
+	}
+
+	if found < 8 {
+		return nil, nil
+	}
+
+	identityRaw, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), "IDENTITY.md"))
+	if err == nil {
+		identity := strings.ToLower(string(identityRaw))
+		if !strings.Contains(identity, "neosfera") {
+			return nil, nil
+		}
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: map[string]string{},
+		Notes: []string{
+			"Detected from live NeoSfera workspace and oracle skill files",
 		},
 	}, nil
 }
@@ -2350,6 +2426,26 @@ func buildShirokovCapitalCorePlan(inputs map[string]string) (*Plan, error) {
 		},
 		Notes: []string{
 			"Installs a branded Shirokov Capital oracle workspace with investment-property consultation and qualification guidance",
+			"Designed to pair with Access & Trust and Telegram Topic Context instead of hard-coding messenger access inside the pack",
+		},
+	}, nil
+}
+
+func buildNeoSferaCorePlan(inputs map[string]string) (*Plan, error) {
+	files, err := staticPackFiles("neosfera-core")
+	if err != nil {
+		return nil, err
+	}
+
+	return &Plan{
+		Files: files,
+		ConfigPatch: func(root map[string]any) (bool, error) {
+			changed := false
+			changed = ensureNestedString(root, []string{"agents", "defaults", "typingMode"}, "message") || changed
+			return changed, nil
+		},
+		Notes: []string{
+			"Installs a branded NeoSfera oracle workspace with session, diagnostics, training, and partner guidance",
 			"Designed to pair with Access & Trust and Telegram Topic Context instead of hard-coding messenger access inside the pack",
 		},
 	}, nil

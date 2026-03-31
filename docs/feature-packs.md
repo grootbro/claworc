@@ -140,6 +140,19 @@ This is the recommended authoring model for new branded bots:
 3. layer channels separately
 4. save the final composition as a blueprint
 
+`neosfera-core` follows the same model for `NeoSfera`.
+
+It installs:
+
+- branded NeoSfera identity and tone
+- compact public messenger guardrails
+- a NeoSfera-specific oracle router
+- a NeoSfera-specific consultation playbook
+- product memory for sessions, diagnostics, operator training, and partner/cabinet conversations
+
+It is meant to stay reusable before the team decides whether NeoSfera should
+also get a branded lead-routing pack.
+
 ## Branded lead-flow packs
 
 `shirokov-lead-flow` is the branded handoff and manager-routing pack for `Shirokov Capital`.
