@@ -981,6 +981,38 @@ var packRegistry = map[string]Definition{
 		},
 		buildPlan: buildNeoSferaCorePlan,
 	},
+	"ravefox-it-lab-core": {
+		Slug:            "ravefox-it-lab-core",
+		Name:            "RaveFox IT Lab Core",
+		Summary:         "Installs a branded RaveFox IT Lab oracle workspace for custom engineering, AI and Web3 consulting, product scoping, and ecosystem navigation with compact messenger guardrails.",
+		Category:        "sales-oracle",
+		Version:         "1",
+		Available:       true,
+		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "brand-oracle",
+				Name:    "Brand oracle",
+				Summary: "Sets the RaveFox IT Lab voice, public-vs-trusted posture, and clear architect-led identity for messenger conversations.",
+			},
+			{
+				Key:     "product-scoping",
+				Name:    "Product scoping",
+				Summary: "Guides users from vague ideas toward the right path: custom lab build, AppNative package, AI automation, Web3 architecture, or audit.",
+			},
+			{
+				Key:     "ecosystem-navigation",
+				Name:    "Ecosystem navigation",
+				Summary: "Keeps RaveFox IT Lab, AppNative, blog.ravefox.dev, and Mind Forest distinct so the bot can point people to the right surface fast.",
+			},
+			{
+				Key:     "safe-estimation",
+				Name:    "Safe estimation",
+				Summary: "Uses the public project calculator as a directional starting point without inventing fixed quotes, hidden case studies, or fake certainty.",
+			},
+		},
+		buildPlan: buildRaveFoxITLabCorePlan,
+	},
 	"neosfera-lead-flow": {
 		Slug:            "neosfera-lead-flow",
 		Name:            "NeoSfera Lead Flow",
@@ -1593,6 +1625,8 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 		return detectShirokovCapitalCoreStatus(rt)
 	case "neosfera-core":
 		return detectNeoSferaCoreStatus(rt)
+	case "ravefox-it-lab-core":
+		return detectRaveFoxITLabCoreStatus(rt)
 	case "neosfera-lead-flow":
 		return detectNeoSferaLeadFlowStatus(rt)
 	case "shirokov-lead-flow":
@@ -1988,6 +2022,48 @@ func detectNeoSferaCoreStatus(rt *Runtime) (*detectedStatus, error) {
 		CurrentInputs: map[string]string{},
 		Notes: []string{
 			"Detected from live NeoSfera workspace and oracle skill files",
+		},
+	}, nil
+}
+
+func detectRaveFoxITLabCoreStatus(rt *Runtime) (*detectedStatus, error) {
+	required := []string{
+		"BOOTSTRAP.md",
+		"IDENTITY.md",
+		"SOUL.md",
+		"AGENTS.md",
+		"MEMORY.md",
+		"TOOLS.md",
+		"USER.md",
+		"PRODUCTS.md",
+		"skills/ravefox-oracle-router/SKILL.md",
+		"skills/ravefox-consultation-playbook/SKILL.md",
+	}
+
+	found := 0
+	for _, rel := range required {
+		if _, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), rel)); err == nil {
+			found++
+		}
+	}
+
+	if found < 8 {
+		return nil, nil
+	}
+
+	identityRaw, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), "IDENTITY.md"))
+	if err == nil {
+		identity := strings.ToLower(string(identityRaw))
+		if !strings.Contains(identity, "ravefox") && !strings.Contains(identity, "it lab") {
+			return nil, nil
+		}
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: map[string]string{},
+		Notes: []string{
+			"Detected from live RaveFox IT Lab workspace and oracle skill files",
 		},
 	}, nil
 }
@@ -2574,6 +2650,26 @@ func buildNeoSferaCorePlan(inputs map[string]string) (*Plan, error) {
 		},
 		Notes: []string{
 			"Installs a branded NeoSfera oracle workspace with session, diagnostics, training, and partner guidance",
+			"Designed to pair with Access & Trust and Telegram Topic Context instead of hard-coding messenger access inside the pack",
+		},
+	}, nil
+}
+
+func buildRaveFoxITLabCorePlan(inputs map[string]string) (*Plan, error) {
+	files, err := staticPackFiles("ravefox-it-lab-core")
+	if err != nil {
+		return nil, err
+	}
+
+	return &Plan{
+		Files: files,
+		ConfigPatch: func(root map[string]any) (bool, error) {
+			changed := false
+			changed = ensureNestedString(root, []string{"agents", "defaults", "typingMode"}, "message") || changed
+			return changed, nil
+		},
+		Notes: []string{
+			"Installs a branded RaveFox IT Lab oracle workspace for custom engineering, AI and Web3 consulting, product scoping, and ecosystem navigation",
 			"Designed to pair with Access & Trust and Telegram Topic Context instead of hard-coding messenger access inside the pack",
 		},
 	}, nil
