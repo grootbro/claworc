@@ -346,6 +346,36 @@ function isActive(record) {
   return !["closed_won", "closed_lost"].includes(record.status);
 }
 
+function comparableText(value) {
+  return clean(value).toLowerCase();
+}
+
+function isBookingStep(value) {
+  const text = comparableText(value);
+  return text.includes("брон") || text.includes("booking") || text.includes("reserve");
+}
+
+function shouldSplitDeal(existing, candidate) {
+  const existingNeed = comparableText(existing.key_need);
+  const candidateNeed = comparableText(candidate.key_need);
+  const existingNext = comparableText(existing.requested_next_step);
+  const candidateNext = comparableText(candidate.requested_next_step);
+
+  if (existingNeed && candidateNeed && existingNeed !== candidateNeed) {
+    return true;
+  }
+
+  if (
+    existing.manager_routed_at &&
+    isBookingStep(candidateNext) &&
+    !isBookingStep(existingNext)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function matchExisting(records, candidate) {
   if (candidate.__force_new) return null;
 
@@ -356,11 +386,17 @@ function matchExisting(records, candidate) {
 
   for (const record of Object.values(records)) {
     if (!isActive(record)) continue;
-    if (telegramUserId && String(record.telegram_user_id || "") === telegramUserId) return record;
+    if (telegramUserId && String(record.telegram_user_id || "") === telegramUserId) {
+      if (shouldSplitDeal(record, candidate)) continue;
+      return record;
+    }
   }
   for (const record of Object.values(records)) {
     if (!isActive(record)) continue;
-    if (contact && String(record.contact || "").toLowerCase() === contact) return record;
+    if (contact && String(record.contact || "").toLowerCase() === contact) {
+      if (shouldSplitDeal(record, candidate)) continue;
+      return record;
+    }
   }
   for (const record of Object.values(records)) {
     if (!isActive(record)) continue;
