@@ -11,6 +11,20 @@ Use this skill when the user:
 - asks for a manager or a call
 - is clearly a warm lead
 
+## Draft capture before the final yes/no
+
+If warm commercial intent is already obvious but one final short confirmation is still needed:
+
+1. save or update a draft lead first through `NeoSfera Lead Registry`
+2. include the current messenger context in that draft:
+   - `source`
+   - `channel`
+   - `chat_id`
+   - `topic_id` or `thread`
+3. only then ask the final closing question
+
+This prevents losing the thread context when the user later answers with a short message like `да`, `ок`, `давай`, `поехали`, or `беру`.
+
 ## Collect only what is needed
 
 Ask only for missing items:
@@ -39,6 +53,7 @@ Special case for NeoSfera commercial flows:
 
 - if the user explicitly agrees to a manager consultation about training, cabinet launch, or partnership, the lead is ready even when city is still missing;
 - in that case, route now and leave geography for manager follow-up instead of pretending the handoff already happened.
+- If that agreement arrives as a short follow-up like `да` in the same thread, reuse the already saved draft lead and route immediately instead of asking the same qualification questions again.
 
 For Telegram or Slack conversations, the current active messenger thread already counts as a valid contact channel unless the user explicitly asks to switch elsewhere.
 
@@ -51,6 +66,7 @@ When ready:
 
 - In this deployment, do not use `sessions_spawn`, `subagent`, or any background handoff path for Telegram group sessions.
 - Use the current session and call the local routing tool directly through `exec`.
+- If the user is warm but not fully ready yet, first run `node scripts/lead_registry.mjs upsert` with the known context so the active thread is anchored to a lead before the final confirmation.
 - Preferred command shape:
   - `node scripts/lead_registry.mjs route-manager`
   - pass the qualified lead JSON on stdin
@@ -71,6 +87,7 @@ When ready:
   - `chat_id`
   - `topic_id` or `thread`
 - Do not use shorthand aliases like `interest`, `goal`, `format`, or `action` when constructing the final routing JSON. Convert them to the canonical keys above before calling the tool.
+- When the final user message is only a short confirmation, do not send an empty payload. Reuse the already known context from the active thread lead and pass it together with the confirmation.
 - Only use the short external confirmation after the tool result explicitly shows successful delivery, for example `delivery_completed: true`.
 - If the tool returns `forbidden`, `aborted`, or any error, do not claim the lead was forwarded.
 

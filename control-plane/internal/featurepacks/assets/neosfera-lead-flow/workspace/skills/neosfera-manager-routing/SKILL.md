@@ -8,12 +8,14 @@ Use this skill only when:
 
 - the user explicitly asks for a manager, call, recording, or launch follow-up
 - the user wants a human consultation on sessions, diagnostics, training, cabinet launch, or partnership
+- the user gives a short explicit confirmation such as `да`, `ок`, or `давай` in direct response to your last consultation offer
 - or `NeoSfera Lead Handoff` has already produced a ready summary
 
 Before routing:
 
 1. read `LEAD_ROUTING.md`
 2. make sure the lead already exists in `NeoSfera Lead Registry`
+3. if the latest user message is only a short confirmation, reuse the existing thread lead instead of routing an almost empty payload
 
 Preferred implementation path:
 
