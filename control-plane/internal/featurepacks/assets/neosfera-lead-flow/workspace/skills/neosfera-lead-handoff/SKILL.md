@@ -65,10 +65,12 @@ When ready:
 ## Execution Path
 
 - In this deployment, do not use `sessions_spawn`, `subagent`, or any background handoff path for Telegram group sessions.
-- Use the current session and call the local routing tool directly through `exec`.
-- If the user is warm but not fully ready yet, first run `node scripts/lead_registry.mjs upsert` with the known context so the active thread is anchored to a lead before the final confirmation.
+- Use the current session and call the local routing wrapper directly through `exec`.
+- Do not probe npm tool folders, run `ls`, or inspect the filesystem before handoff. Go straight to the allowlisted wrapper commands below.
+- If the user is warm but not fully ready yet, first run `./bin/neosfera-lead-registry upsert` with the known context so the active thread is anchored to a lead before the final confirmation.
 - Preferred command shape:
-  - `node scripts/lead_registry.mjs route-manager`
+  - `./bin/neosfera-lead-registry upsert`
+  - `./bin/neosfera-lead-registry route-manager`
   - pass the qualified lead JSON on stdin
 - Always send canonical JSON fields so manager cards stay consistent across Telegram and Slack:
   - `name`
@@ -88,6 +90,7 @@ When ready:
   - `topic_id` or `thread`
 - Do not use shorthand aliases like `interest`, `goal`, `format`, or `action` when constructing the final routing JSON. Convert them to the canonical keys above before calling the tool.
 - When the final user message is only a short confirmation, do not send an empty payload. Reuse the already known context from the active thread lead and pass it together with the confirmation.
+- If the same person returns later with a materially different NeoSfera request, for example `сессия` vs `франшиза`, a new city, or a new partnership track, treat it as a fresh lead instead of silently overwriting the previous one. Set `force_new: true` when the split is obvious.
 - Only use the short external confirmation after the tool result explicitly shows successful delivery, for example `delivery_completed: true`.
 - If the tool returns `forbidden`, `aborted`, or any error, do not claim the lead was forwarded.
 

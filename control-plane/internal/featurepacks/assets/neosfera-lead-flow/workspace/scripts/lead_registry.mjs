@@ -378,6 +378,38 @@ function isActive(record) {
   return !["closed_won", "closed_lost"].includes(record.status);
 }
 
+function comparableText(value) {
+  return clean(value).toLowerCase();
+}
+
+function shouldSplitDeal(existing, candidate) {
+  const alreadyRouted =
+    Boolean(clean(existing.manager_routed_at)) ||
+    comparableText(existing.status) === "routed" ||
+    comparableText(existing.stage) === "routed";
+  if (!alreadyRouted) return false;
+
+  const compareFields = [
+    "project_type",
+    "model_or_use_case",
+    "key_need",
+    "requested_next_step",
+    "region",
+    "budget",
+    "summary",
+  ];
+
+  for (const field of compareFields) {
+    const existingValue = comparableText(existing[field]);
+    const candidateValue = comparableText(candidate[field]);
+    if (existingValue && candidateValue && existingValue !== candidateValue) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function matchExisting(records, candidate) {
   if (candidate.__force_new) return null;
 
@@ -388,11 +420,17 @@ function matchExisting(records, candidate) {
 
   for (const record of Object.values(records)) {
     if (!isActive(record)) continue;
-    if (telegramUserId && String(record.telegram_user_id || "") === telegramUserId) return record;
+    if (telegramUserId && String(record.telegram_user_id || "") === telegramUserId) {
+      if (shouldSplitDeal(record, candidate)) continue;
+      return record;
+    }
   }
   for (const record of Object.values(records)) {
     if (!isActive(record)) continue;
-    if (contact && String(record.contact || "").toLowerCase() === contact) return record;
+    if (contact && String(record.contact || "").toLowerCase() === contact) {
+      if (shouldSplitDeal(record, candidate)) continue;
+      return record;
+    }
   }
   for (const record of Object.values(records)) {
     if (!isActive(record)) continue;
