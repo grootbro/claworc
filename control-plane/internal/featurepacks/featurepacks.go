@@ -1013,6 +1013,72 @@ var packRegistry = map[string]Definition{
 		},
 		buildPlan: buildRaveFoxITLabCorePlan,
 	},
+	"ravefox-lead-flow": {
+		Slug:            "ravefox-lead-flow",
+		Name:            "RaveFox Lead Flow",
+		Summary:         "Adds RaveFox IT Lab lead handoff, native lead registry, compact manager cards, and Telegram lead routing for custom engineering, AI, Web3, and AppNative conversations.",
+		Category:        "sales-oracle",
+		Version:         "1",
+		Available:       true,
+		RestartsGateway: true,
+		Modules: []ModuleDefinition{
+			{
+				Key:     "lead-flow",
+				Name:    "Lead flow",
+				Summary: "Collects only the missing commercial context, stores warm RaveFox leads natively, and keeps one active lead updated instead of duplicating it.",
+			},
+			{
+				Key:     "manager-routing",
+				Name:    "Manager routing",
+				Summary: "Routes ready RaveFox leads into a primary Telegram lead chat/topic and optional direct manager delivery.",
+			},
+			{
+				Key:     "client-safe-confirmation",
+				Name:    "Client-safe confirmation",
+				Summary: "Keeps external handoff confirmations compact and hides internal lead IDs and numeric Telegram identifiers from clients.",
+			},
+		},
+		Inputs: []InputDefinition{
+			{
+				Key:                "primary_sales_chat_id",
+				Label:              "Primary lead chat ID",
+				Description:        "Telegram chat_id for the main RaveFox lead-processing chat or manager group.",
+				Placeholder:        "-1001234567890",
+				Type:               InputTypeText,
+				Required:           false,
+				Section:            "Manager routing",
+				SectionDescription: "These settings decide where qualified RaveFox leads should go after the bot has collected enough context.",
+			},
+			{
+				Key:         "primary_sales_message_thread_id",
+				Label:       "Primary topic ID",
+				Description: "Telegram forum topic id for routing leads inside a manager group.",
+				Placeholder: "305",
+				Type:        InputTypeText,
+				Required:    false,
+				Section:     "Manager routing",
+			},
+			{
+				Key:         "manager_user_ids",
+				Label:       "Direct manager user IDs",
+				Description: "Comma or newline separated Telegram user IDs for direct delivery.",
+				Placeholder: "240961095,237749873",
+				Type:        InputTypeTextarea,
+				Required:    false,
+				Section:     "Manager routing",
+			},
+			{
+				Key:          "duplicate_direct_delivery",
+				Label:        "Duplicate to direct managers",
+				Description:  "When enabled, the lead is sent to the primary chat/topic first and then duplicated to configured manager direct chats.",
+				Type:         InputTypeBoolean,
+				Required:     false,
+				DefaultValue: "true",
+				Section:      "Manager routing",
+			},
+		},
+		buildPlan: buildRaveFoxLeadFlowPlan,
+	},
 	"neosfera-lead-flow": {
 		Slug:            "neosfera-lead-flow",
 		Name:            "NeoSfera Lead Flow",
@@ -1627,6 +1693,8 @@ func detectPackStatus(rt *Runtime, def Definition, configRoot map[string]any) (*
 		return detectNeoSferaCoreStatus(rt)
 	case "ravefox-it-lab-core":
 		return detectRaveFoxITLabCoreStatus(rt)
+	case "ravefox-lead-flow":
+		return detectRaveFoxLeadFlowStatus(rt)
 	case "neosfera-lead-flow":
 		return detectNeoSferaLeadFlowStatus(rt)
 	case "shirokov-lead-flow":
@@ -2064,6 +2132,66 @@ func detectRaveFoxITLabCoreStatus(rt *Runtime) (*detectedStatus, error) {
 		CurrentInputs: map[string]string{},
 		Notes: []string{
 			"Detected from live RaveFox IT Lab workspace and oracle skill files",
+		},
+	}, nil
+}
+
+func detectRaveFoxLeadFlowStatus(rt *Runtime) (*detectedStatus, error) {
+	type managerTarget struct {
+		UserID *int64 `json:"user_id"`
+	}
+	type leadTargets struct {
+		PrimarySalesChatID          *int64          `json:"primary_sales_chat_id"`
+		PrimarySalesMessageThreadID *int64          `json:"primary_sales_message_thread_id"`
+		DuplicateDirectDelivery     bool            `json:"duplicate_direct_delivery"`
+		DirectManagerTargets        []managerTarget `json:"direct_manager_targets"`
+	}
+
+	required := []string{
+		"LEAD_DATABASE.md",
+		"LEAD_ROUTING.md",
+		"scripts/lead_registry.mjs",
+		"skills/ravefox-lead-registry/SKILL.md",
+		"skills/ravefox-manager-routing/SKILL.md",
+	}
+	found := 0
+	for _, rel := range required {
+		if _, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), rel)); err == nil {
+			found++
+		}
+	}
+
+	targetsRaw, err := sshproxy.ReadFile(rt.Client, path.Join(rt.workspaceRoot(), "leads", "targets.json"))
+	if err != nil && found < 3 {
+		return nil, nil
+	}
+
+	inputs := map[string]string{}
+	if err == nil {
+		var payload leadTargets
+		if json.Unmarshal(targetsRaw, &payload) == nil {
+			if payload.PrimarySalesChatID != nil {
+				inputs["primary_sales_chat_id"] = strconv.FormatInt(*payload.PrimarySalesChatID, 10)
+			}
+			if payload.PrimarySalesMessageThreadID != nil {
+				inputs["primary_sales_message_thread_id"] = strconv.FormatInt(*payload.PrimarySalesMessageThreadID, 10)
+			}
+			managerIDs := make([]string, 0, len(payload.DirectManagerTargets))
+			for _, target := range payload.DirectManagerTargets {
+				if target.UserID != nil {
+					managerIDs = append(managerIDs, strconv.FormatInt(*target.UserID, 10))
+				}
+			}
+			inputs["manager_user_ids"] = strings.Join(managerIDs, ",")
+			inputs["duplicate_direct_delivery"] = strconv.FormatBool(payload.DuplicateDirectDelivery)
+		}
+	}
+
+	return &detectedStatus{
+		Applied:       true,
+		CurrentInputs: inputs,
+		Notes: []string{
+			"Detected from live RaveFox lead routing files",
 		},
 	}, nil
 }
@@ -2671,6 +2799,76 @@ func buildRaveFoxITLabCorePlan(inputs map[string]string) (*Plan, error) {
 		Notes: []string{
 			"Installs a branded RaveFox IT Lab oracle workspace for custom engineering, AI and Web3 consulting, product scoping, and ecosystem navigation",
 			"Designed to pair with Access & Trust and Telegram Topic Context instead of hard-coding messenger access inside the pack",
+		},
+	}, nil
+}
+
+func buildRaveFoxLeadFlowPlan(inputs map[string]string) (*Plan, error) {
+	chatID := strings.TrimSpace(inputs["primary_sales_chat_id"])
+	if chatID != "" {
+		if _, err := strconv.ParseInt(chatID, 10, 64); err != nil {
+			return nil, validationError{message: "primary_sales_chat_id must be a numeric Telegram chat_id"}
+		}
+	}
+	topicID := strings.TrimSpace(inputs["primary_sales_message_thread_id"])
+	if topicID != "" {
+		if _, err := strconv.ParseInt(topicID, 10, 64); err != nil {
+			return nil, validationError{message: "primary_sales_message_thread_id must be numeric"}
+		}
+	}
+	managerUserIDs, err := parseNumericList(inputs["manager_user_ids"])
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := staticPackFiles("ravefox-lead-flow")
+	if err != nil {
+		return nil, err
+	}
+
+	files = append(files,
+		ManagedFile{
+			RelativePath: "LEAD_ROUTING.md",
+			Content:      []byte(renderRaveFoxLeadRouting(inputs, managerUserIDs)),
+		},
+		ManagedFile{
+			RelativePath: "leads/targets.json",
+			Content:      []byte(renderRaveFoxTargetsJSON(inputs, managerUserIDs)),
+		},
+		ManagedFile{
+			RelativePath: "leads/registry.jsonl",
+			Content:      []byte(""),
+			SeedOnly:     true,
+		},
+		ManagedFile{
+			RelativePath: "leads/SEQUENCE.txt",
+			Content:      []byte("0"),
+			SeedOnly:     true,
+		},
+	)
+
+	return &Plan{
+		Files: files,
+		TextPatches: []ManagedTextPatch{
+			{
+				RelativePath:    "TOOLS.md",
+				Marker:          "claworc:feature-pack ravefox-lead-flow",
+				CreateIfMissing: true,
+				Block: `<!-- claworc:feature-pack ravefox-lead-flow -->
+## RaveFox lead flow
+
+- Use RaveFox Lead Handoff when a user wants to start a project, discuss AI automation, Web3, AppNative execution, audit, rough estimate, or a scoping conversation.
+- Use RaveFox Lead Registry before human routing so one active warm lead is updated instead of duplicated.
+- Use RaveFox Manager Routing only when the lead is ready for a real human next step.
+- In Telegram group sessions, do not use sessions_spawn or subagents for this handoff. Use the current session and direct local routing via node scripts/lead_registry.mjs route-manager.
+- In user-facing confirmations, never expose RF-xxxx, numeric Telegram ids, raw topic ids, or internal routing language.
+- Use this short customer-facing confirmation after successful handoff: "Готово. Я передал ваш запрос команде RaveFox IT Lab. Они свяжутся с вами здесь или в Telegram в ближайшее рабочее время."
+- In manager-facing Telegram cards, show only filled fields; do not print long "не указано" blocks.`,
+			},
+		},
+		Notes: []string{
+			"Installs a RaveFox-native lead registry, handoff skills, and Telegram manager routing files under workspace/leads",
+			"Designed to pair with RaveFox IT Lab Core so warm leads from custom development, AI, Web3, and AppNative conversations stay branded through human handoff",
 		},
 	}, nil
 }
@@ -3653,6 +3851,90 @@ func renderShirokovTargetsJSON(inputs map[string]string, managerUserIDs []int64)
 
 	data, _ := json.MarshalIndent(payload, "", "  ")
 	return string(append(data, '\n'))
+}
+
+func renderRaveFoxTargetsJSON(inputs map[string]string, managerUserIDs []int64) string {
+	return renderShirokovTargetsJSON(inputs, managerUserIDs)
+}
+
+func renderRaveFoxLeadRouting(inputs map[string]string, managerUserIDs []int64) string {
+	chatID := strings.TrimSpace(inputs["primary_sales_chat_id"])
+	if chatID == "" {
+		chatID = "TODO"
+	}
+	topicID := strings.TrimSpace(inputs["primary_sales_message_thread_id"])
+	if topicID == "" {
+		topicID = "TODO"
+	}
+	var builder strings.Builder
+	builder.WriteString("# LEAD_ROUTING.md\n\n")
+	builder.WriteString("## RaveFox IT Lab manager routing policy\n\n")
+	builder.WriteString("This workspace routes qualified RaveFox IT Lab leads to human managers through Telegram.\n\n")
+	builder.WriteString("## Routing mode\n\n")
+	builder.WriteString("- Primary mode: one internal Telegram lead chat by `chat_id`\n")
+	builder.WriteString("- If the lead chat is a forum supergroup, route into the exact processing topic by `message_thread_id`\n")
+	builder.WriteString("- Optional duplicate mode: direct manager delivery by `user_id`\n")
+	builder.WriteString("- `@username` is for readability only\n\n")
+	builder.WriteString("## Delivery policy\n\n")
+	builder.WriteString("- Send to the primary lead chat first\n")
+	builder.WriteString("- Duplicate to direct managers only if `duplicate_direct_delivery = true`\n")
+	builder.WriteString("- Never confirm handoff before successful send\n")
+	builder.WriteString("- Manager-facing messages may include `RF-xxxx` and numeric Telegram user ids\n")
+	builder.WriteString("- User-facing chats must never expose those internal identifiers\n\n")
+	builder.WriteString("## Trigger policy\n\n")
+	builder.WriteString("Route to a human when at least one is true:\n\n")
+	builder.WriteString("- the user explicitly asks to start a project, discuss scope, request an estimate, or talk to a manager\n")
+	builder.WriteString("- the user wants custom development, AI automation, Web3 / blockchain work, AppNative execution, or architecture review\n")
+	builder.WriteString("- the case becomes commercial, contractual, multi-step, or high-touch\n")
+	builder.WriteString("- the bot reaches `Escalate` zone\n\n")
+	builder.WriteString("## Minimum ready state\n\n")
+	builder.WriteString("Required before routing:\n\n")
+	builder.WriteString("- at least one contact channel\n")
+	builder.WriteString("- project direction, use case, or requested service format\n")
+	builder.WriteString("- requested next step\n\n")
+	builder.WriteString("## Production targets\n\n")
+	builder.WriteString("`primary_sales_chat_id = " + chatID + "`\n\n")
+	builder.WriteString("`primary_sales_message_thread_id = " + topicID + "`\n\n")
+	builder.WriteString("`duplicate_direct_delivery = " + strconv.FormatBool(boolFromInput(inputs["duplicate_direct_delivery"])) + "`\n\n")
+	builder.WriteString("`direct_manager_targets =`\n\n")
+	if len(managerUserIDs) == 0 {
+		builder.WriteString("- `name = manager-1`\n")
+		builder.WriteString("  - `chat_id = TODO`\n")
+		builder.WriteString("  - `user_id = TODO`\n")
+		builder.WriteString("  - `username = TODO`\n")
+	} else {
+		for index, userID := range managerUserIDs {
+			builder.WriteString(fmt.Sprintf("- `name = manager-%d`\n", index+1))
+			builder.WriteString(fmt.Sprintf("  - `chat_id = %d`\n", userID))
+			builder.WriteString(fmt.Sprintf("  - `user_id = %d`\n", userID))
+			builder.WriteString("  - `username = TODO`\n")
+		}
+	}
+	builder.WriteString("\n## Telegram manager card\n\n")
+	builder.WriteString("Use a short Russian lead card:\n\n")
+	builder.WriteString("`Новый лид RaveFox IT Lab · RF-0001 · Вадим`\n\n")
+	builder.WriteString("`Статус`\n")
+	builder.WriteString("- Приоритет:\n")
+	builder.WriteString("- Стадия:\n")
+	builder.WriteString("- Что нужно от менеджера:\n\n")
+	builder.WriteString("`Контакт`\n")
+	builder.WriteString("- Имя:\n")
+	builder.WriteString("- Telegram: @username\n")
+	builder.WriteString("- Связь:\n\n")
+	builder.WriteString("`Проект`\n")
+	builder.WriteString("- Рынок / контекст:\n")
+	builder.WriteString("- Тип проекта:\n")
+	builder.WriteString("- Сценарий / use case:\n")
+	builder.WriteString("- Срок / горизонт:\n")
+	builder.WriteString("- Бюджет:\n")
+	builder.WriteString("- Формат / объем:\n\n")
+	builder.WriteString("`Суть`\n")
+	builder.WriteString("- Ключевой запрос:\n")
+	builder.WriteString("- Важные нюансы:\n\n")
+	builder.WriteString("`Короткое резюме`\n")
+	builder.WriteString("- 2-4 живые строки по сути запроса.\n")
+	builder.WriteString("\nIf a lead already exists and was already routed, edit the previous manager message instead of sending a duplicate where possible.\n")
+	return builder.String()
 }
 
 func renderNeoSferaTargetsJSON(inputs map[string]string, managerUserIDs []int64) string {
