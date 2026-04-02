@@ -106,8 +106,26 @@ function parseCliArgs(argv) {
   return out;
 }
 
-function loadInput() {
-  const cli = parseCliArgs(process.argv.slice(3));
+function resolveCommand(argv) {
+  const raw = argv[2] || "";
+  if (!raw) return { command: "upsert", argStart: 3 };
+  if (raw === "upsert" || raw === "route-manager") {
+    return { command: raw, argStart: 3 };
+  }
+  if (raw === "--help" || raw === "-h" || raw === "help") {
+    return { command: "help", argStart: 3 };
+  }
+  if (raw.startsWith("--")) {
+    // Be defensive: some model runs call the wrapper directly with CLI flags.
+    // In that case, treat it as a final routing attempt instead of failing on
+    // "unknown command: --name".
+    return { command: "route-manager", argStart: 2 };
+  }
+  return { command: raw, argStart: 3 };
+}
+
+function loadInput(argStart = 3) {
+  const cli = parseCliArgs(process.argv.slice(argStart));
   const raw = readStdin().trim();
   if (!raw) return cli;
   return { ...cli, ...JSON.parse(raw) };
@@ -817,8 +835,14 @@ function customerConfirmation() {
 
 async function main() {
   ensureDirs();
-  const command = process.argv[2] || "upsert";
-  const input = loadInput();
+  const resolved = resolveCommand(process.argv);
+  const command = resolved.command;
+  const input = loadInput(resolved.argStart);
+
+  if (command === "help") {
+    process.stdout.write("usage: lead_registry.mjs [upsert|route-manager] [--field value ...] < payload.json\n");
+    return;
+  }
 
   if (command === "upsert") {
     upsertLead(input);
