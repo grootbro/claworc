@@ -22,10 +22,10 @@
 
 ## Registry script
 
-Use the native Node script:
+Use the local routing wrapper:
 
-- `node scripts/lead_registry.mjs upsert`
-- `node scripts/lead_registry.mjs route-manager`
+- `./bin/neodome-lead-registry upsert`
+- `./bin/neodome-lead-registry route-manager`
 
 Pass JSON through stdin.
 

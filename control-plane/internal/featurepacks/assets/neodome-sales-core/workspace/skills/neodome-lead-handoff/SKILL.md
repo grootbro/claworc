@@ -44,9 +44,12 @@ When ready:
 
 ## Execution path
 
-- In this deployment, use the current session and call the local routing tool through `exec`.
+- In this deployment, do not use raw `node scripts/...` calls for manager handoff in messenger sessions.
+- Use the current session and call the local routing wrapper directly through `exec`.
+- Do not probe npm tool folders, run `ls`, or inspect the filesystem before handoff.
 - Preferred command shape:
-  - `node scripts/lead_registry.mjs route-manager`
+  - `./bin/neodome-lead-registry upsert`
+  - `./bin/neodome-lead-registry route-manager`
   - pass the qualified lead JSON on stdin
 - Always send canonical JSON fields:
   - `name`
@@ -65,6 +68,9 @@ When ready:
   - `chat_id`
   - `topic_id` or `thread`
 - Do not use shorthand aliases like `interest`, `goal`, `format`, or `action` in the final routing JSON.
+- If the user is warm but one short confirmation is still needed, first save a draft lead with `./bin/neodome-lead-registry upsert`, then ask the final yes/no question.
+- If the final user reply is only `да`, `ок`, `давай`, or similar, do not send an empty payload. Reuse the already known lead context from the active thread.
+- If the tool returns `forbidden`, `aborted`, `pairing required`, or any error, do not claim the lead was forwarded.
 
 ## Confirmation rules
 

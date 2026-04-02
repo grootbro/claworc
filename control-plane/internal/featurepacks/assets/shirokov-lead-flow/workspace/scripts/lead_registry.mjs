@@ -69,6 +69,14 @@ function openclawConfigPath() {
   return path.join(workspaceRoot(), "..", "openclaw.json");
 }
 
+function catalogDataPathCandidates() {
+  const fileName = "shirokov_lstd_selection_f6132c75.json";
+  return [
+    path.join(workspaceRoot(), "data", fileName),
+    path.resolve(workspaceRoot(), "..", "..", "shirokov-capital-core", "workspace", "data", fileName),
+  ];
+}
+
 function ensureDirs() {
   fs.mkdirSync(leadsDir(), { recursive: true });
   fs.mkdirSync(cardsDir(), { recursive: true });
@@ -152,6 +160,93 @@ function normalizeRequestedNextStep(value) {
   return text;
 }
 
+let cachedCatalogIndex = null;
+
+function loadCatalogIndex() {
+  if (cachedCatalogIndex) return cachedCatalogIndex;
+
+  for (const candidate of catalogDataPathCandidates()) {
+    if (!fs.existsSync(candidate)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(candidate, "utf8"));
+      const facilities = Array.isArray(parsed?.facilities) ? parsed.facilities : [];
+      const byId = new Map();
+      const byName = new Map();
+
+      for (const facility of facilities) {
+        const id = clean(facility?.id);
+        const name = clean(facility?.name);
+        if (id) byId.set(id, facility);
+        if (name) byName.set(comparableText(name), facility);
+      }
+
+      cachedCatalogIndex = { byId, byName };
+      return cachedCatalogIndex;
+    } catch {
+      // ignore malformed catalog snapshot and keep searching candidates
+    }
+  }
+
+  cachedCatalogIndex = { byId: new Map(), byName: new Map() };
+  return cachedCatalogIndex;
+}
+
+function extractObjectId(text) {
+  const match = clean(text).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  return match ? match[0] : "";
+}
+
+function normalizeFacilityRegion(facility) {
+  const city = clean(facility?.city);
+  const district = clean(facility?.district).replace(/\s+район$/iu, "");
+  if (city && district) return `${city} / ${district}`;
+
+  const label = clean(facility?.location_label).replace(/\s+район$/iu, "");
+  if (label) return label.replace(/,\s*/u, " / ");
+
+  return "";
+}
+
+function inferProjectTypeFromFacility(facility) {
+  const name = clean(facility?.name);
+  const text = [name, clean(facility?.description)].join(" ").toLowerCase();
+
+  if (/апарт[-\s]?отел/u.test(text) || /^ак\b/u.test(name.toLowerCase())) return "апарт-отель";
+  if (/апартамент/u.test(text)) return "апартаменты";
+  if (/резиденц/u.test(text)) return "резиденции";
+  if (/отел/u.test(text)) return "отель";
+  if (/вилл/u.test(text)) return "вилла";
+
+  return "";
+}
+
+function findCatalogFacility(input, record) {
+  const catalog = loadCatalogIndex();
+  const objectId = pickFirst(
+    input.object_id,
+    input.facility_id,
+    input.catalog_object_id,
+    extractObjectId(record.key_need),
+    extractObjectId(record.summary),
+  );
+  if (objectId && catalog.byId.has(objectId)) return catalog.byId.get(objectId);
+
+  const objectName = pickFirst(input.object_name, input.facility_name, input.complex_name);
+  const comparableName = comparableText(objectName);
+  if (comparableName && catalog.byName.has(comparableName)) return catalog.byName.get(comparableName);
+
+  return null;
+}
+
+function enrichRecordFromCatalog(record, input) {
+  const facility = findCatalogFacility(input, record);
+  if (!facility) return record;
+
+  record.region = pickFirst(record.region, normalizeFacilityRegion(facility));
+  record.project_type = pickFirst(record.project_type, inferProjectTypeFromFacility(facility));
+  return record;
+}
+
 function normalizeRecord(input) {
   const record = {};
   for (const [key, fallback] of Object.entries(DEFAULTS)) {
@@ -228,6 +323,8 @@ function normalizeRecord(input) {
     input.chat_id && input.topic_id ? `${input.chat_id}:topic:${input.topic_id}` : "",
     input.chat_id,
   );
+
+  enrichRecordFromCatalog(record, input);
 
   record.__force_new = boolValue(input.force_new);
   if (!record.stage) record.stage = record.status || "qualified";
