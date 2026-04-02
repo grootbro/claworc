@@ -48,7 +48,8 @@ When ready:
 - In this deployment, do not use `sessions_spawn`, `subagent`, or any background handoff path for Telegram group sessions.
 - Use the current session and call the local routing tool directly through `exec`.
 - Preferred command shape:
-  - `node scripts/lead_registry.mjs route-manager`
+  - `./bin/shirokov-lead-registry upsert`
+  - `./bin/shirokov-lead-registry route-manager`
   - pass the qualified lead JSON on stdin
 - Always send canonical JSON fields so manager cards stay consistent across Telegram and Slack:
   - `name`
@@ -68,6 +69,7 @@ When ready:
   - `topic_id` or `thread`
 - Do not use shorthand aliases like `interest`, `goal`, `format`, or `action` when constructing the final routing JSON. Convert them to the canonical keys above before calling the tool.
 - If the same person opens a materially different object request or escalates from a generic discussion to an explicit booking request, treat that as a separate deal and pass `force_new = true` so managers receive a fresh lead card instead of a silent edit of an older one.
+- Do not probe npm tool folders, run `ls`, or inspect the filesystem before handoff.
 - Only use the short external confirmation after the tool result explicitly shows successful delivery, for example `delivery_completed: true`.
 - If the tool returns `forbidden`, `aborted`, or any error, do not claim the lead was forwarded.
 

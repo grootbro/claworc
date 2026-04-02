@@ -114,8 +114,22 @@ function parseCliArgs(argv) {
   return out;
 }
 
-function loadInput() {
-  const cli = parseCliArgs(process.argv.slice(3));
+function resolveCommand(argv) {
+  const raw = clean(argv[2]);
+  if (raw === "upsert" || raw === "route-manager") {
+    return { command: raw, argStart: 3 };
+  }
+  if (raw === "help" || raw === "--help" || raw === "-h") {
+    return { command: "help", argStart: 3 };
+  }
+  if (!raw || raw.startsWith("--")) {
+    return { command: "route-manager", argStart: 2 };
+  }
+  return { command: raw, argStart: 3 };
+}
+
+function loadInput(argStart = 3) {
+  const cli = parseCliArgs(process.argv.slice(argStart));
   const raw = readStdin().trim();
   if (!raw) return cli;
   return { ...cli, ...JSON.parse(raw) };
@@ -837,6 +851,12 @@ async function routeManager(input) {
   lead.status = "routed";
   lead.stage = "routed";
   const delivery = await deliverToTelegram(lead);
+  if (!Array.isArray(delivery.routedTargets) || delivery.routedTargets.length === 0) {
+    throw new Error("lead routing finished without any successful delivery targets");
+  }
+  if (!Array.isArray(delivery.log) || delivery.log.length === 0) {
+    throw new Error("lead routing finished without a delivery log");
+  }
   lead.manager_delivery_log = delivery.log;
   lead.manager_route_targets = delivery.routedTargets;
   lead.manager_routed_at = now();
@@ -880,8 +900,14 @@ function customerConfirmation() {
 
 async function main() {
   ensureDirs();
-  const command = process.argv[2] || "upsert";
-  const input = loadInput();
+  const resolved = resolveCommand(process.argv);
+  const command = resolved.command;
+  const input = loadInput(resolved.argStart);
+
+  if (command === "help") {
+    process.stdout.write("usage: lead_registry.mjs [upsert|route-manager] [--field value ...] < payload.json\n");
+    return;
+  }
 
   if (command === "upsert") {
     upsertLead(input);
